@@ -108,11 +108,31 @@ func (c *config) toValue(v any) (reflect.Value, error) {
 		reflect.Float32, reflect.Float64,
 		reflect.Bool:
 		return reflect.ValueOf(v), nil
+	case reflect.Map:
+		return c.toValueFromMap(v)
 	case reflect.Struct:
 		return c.toValueFromStruct(v)
 	default:
 		return reflect.ValueOf(nil), errors.New(fmt.Sprintf("unsupported kind %s", typ.Kind().String()))
 	}
+}
+
+func (c *config) toValueFromMap(v any) (reflect.Value, error) {
+	// We assume this is a struct and convert this to a map of values
+	res := map[string]reflect.Value{}
+	if val, ok := v.(map[string]any); ok {
+		for k, _v := range val {
+			fv, err := c.toValue(_v)
+			if err != nil {
+				return reflect.Value{}, err
+			}
+			res[k] = fv
+		}
+	} else {
+		return reflect.ValueOf(nil), errors.New("map must be of type map[string]any")
+	}
+
+	return reflect.ValueOf(res), nil
 }
 
 func (c *config) toValueFromStruct(v any) (reflect.Value, error) {
@@ -161,12 +181,54 @@ func (c *config) populateValue(fullKey string, dest reflect.Value, val reflect.V
 
 		dest.Set(val)
 		return nil
+	case reflect.Map:
+		// We need to be able to write to the struct
+		return c.populateMap(fullKey, dest, val)
 	case reflect.Struct:
 		// We need to be able to write to the struct
 		return c.populateStruct(fullKey, dest, val)
 	default:
 		return errors.New(fmt.Sprintf("unsupported destination kind %s", dest.Kind().String()))
 	}
+}
+
+func (c *config) populateMap(fullKey string, dest reflect.Value, val reflect.Value) error {
+
+	// type must be map[string]reflect.Value
+	if val.Kind() != reflect.Map {
+		// Value is not a map, can't do anything
+		return nil
+	}
+
+	if _, ok := val.Interface().(map[string]reflect.Value); !ok {
+		return errors.New("invalid internal map type. must be map[string]reflect.Value")
+	}
+
+	if _, ok := dest.Interface().(map[string]any); !ok {
+		return errors.New("invalid destination map type. must be map[string]any")
+	}
+
+	for _, key := range val.MapKeys() {
+		exist := dest.MapIndex(key)
+		_fullKey := fmt.Sprintf("%s.%s", fullKey, toLowerCamel(key.String()))
+		_val := val.MapIndex(key)
+		if exist.IsValid() {
+			err := c.populateValue(_fullKey, exist, _val)
+			if err != nil {
+				return err
+			}
+		} else {
+			__val := _val.Interface().(reflect.Value)
+			_type := __val.Type()
+			_dest := reflect.New(_type).Elem()
+			err := c.populateValue(_fullKey, _dest, __val)
+			if err != nil {
+				return err
+			}
+			dest.SetMapIndex(key, _dest)
+		}
+	}
+	return nil
 }
 
 func (c *config) populateStruct(fullKey string, dest reflect.Value, val reflect.Value) error {
@@ -281,6 +343,9 @@ func (c *config) read(fullKey, key string, data map[string]reflect.Value, into a
 }
 
 func (c *config) Read(key string, into any) error {
+	if reflect.ValueOf(into).Kind() != reflect.Ptr {
+		return errors.New("into must be a pointer")
+	}
 	return c.withCleanData(func() error {
 		return c.read(key, key, c.root, into)
 	})

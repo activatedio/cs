@@ -88,6 +88,42 @@ func TestConfig(t *testing.T) {
 
 			},
 		},
+		"simple maps": {
+			arrange: func(c config.Config) {
+				c.AddSource(func() (string, any, error) {
+					return "key1", map[string]any{
+						"value1": "a",
+						"value2": 2,
+						"value3": true,
+					}, nil
+				})
+				c.AddSource(func() (string, any, error) {
+					return "key2", map[string]any{
+						"value1": "d",
+						"value2": 3,
+						"value3": false,
+					}, nil
+				})
+			},
+			assert: func(c config.Config) {
+				var got1 string
+				var got2 string
+				// We can read individual strings
+				c.MustRead("key1.value1", &got1)
+				c.MustRead("key2.value1", &got2)
+				a.Equal("a", got1)
+				a.Equal("d", got2)
+
+				got3 := map[string]any{}
+				c.MustRead("key1", &got3)
+				a.Equal(map[string]any{
+					"value1": "a",
+					"value2": 2,
+					"value3": true,
+				}, got3)
+
+			},
+		},
 		"simple overrides": {
 			arrange: func(c config.Config) {
 				c.AddSource(func() (string, any, error) {

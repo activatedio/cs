@@ -22,7 +22,8 @@ type Config interface {
 	// underlying results are looked up again with provided keys
 	AddLateBindingSource(src LateBindingSource)
 
-	// Read reads value from the key and assigns it to the provided object, which must be a pointer, map, or slice
+	// Read reads value from the key and assigns it to the provided object, which must be a pointer to a supported value
+	// supported values are all primitives and a map
 	Read(key string, into any) error
 
 	// MustRead reads and panics on error
