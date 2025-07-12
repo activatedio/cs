@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"github.com/spf13/cast"
 	"reflect"
 	"strings"
 	"sync"
@@ -179,7 +180,15 @@ func (c *config) populateValue(fullKey string, dest reflect.Value, val reflect.V
 			}
 		}
 
-		dest.Set(val)
+		// This skips the set in case of a zero value
+		if val.IsValid() {
+			// Need some type conversions, especially given some of the late binding sources will be strings from
+			// environment variables
+			err := c.castAndSet(dest, val)
+			if err != nil {
+				return err
+			}
+		}
 		return nil
 	case reflect.Map:
 		// We need to be able to write to the struct
@@ -192,6 +201,55 @@ func (c *config) populateValue(fullKey string, dest reflect.Value, val reflect.V
 	}
 }
 
+func (c *config) castAndSet(dest, src reflect.Value) error {
+	if dest.Type() == src.Type() {
+		dest.Set(src)
+		return nil
+	}
+
+	var val any
+
+	switch dest.Kind() {
+	case reflect.String:
+		val = cast.ToString(src.Interface())
+	case reflect.Int:
+		val = cast.ToInt(src.Interface())
+	case reflect.Int8:
+		val = cast.ToInt8(src.Interface())
+	case reflect.Int16:
+		val = cast.ToInt16(src.Interface())
+	case reflect.Int32:
+		val = cast.ToInt32(src.Interface())
+	case reflect.Int64:
+		val = cast.ToInt64(src.Interface())
+	case reflect.Uint:
+		val = cast.ToUint(src.Interface())
+	case reflect.Uint8:
+		val = cast.ToUint8(src.Interface())
+	case reflect.Uint16:
+		val = cast.ToUint16(src.Interface())
+	case reflect.Uint32:
+		val = cast.ToUint32(src.Interface())
+	case reflect.Uint64:
+		val = cast.ToUint64(src.Interface())
+	case reflect.Float32:
+		val = cast.ToFloat32(src.Interface())
+	case reflect.Float64:
+		val = cast.ToFloat64(src.Interface())
+	case reflect.Bool:
+		val = cast.ToBool(src.Interface())
+	default:
+		return errors.New(fmt.Sprintf("unsupported type %s", dest.Type().String()))
+	}
+
+	dest.Set(reflect.ValueOf(val))
+
+	return nil
+}
+
+var typeMapStringReflectValue = reflect.TypeFor[map[string]reflect.Value]()
+var typeMapStringAny = reflect.TypeFor[map[string]any]()
+
 func (c *config) populateMap(fullKey string, dest reflect.Value, val reflect.Value) error {
 
 	// type must be map[string]reflect.Value
@@ -200,17 +258,25 @@ func (c *config) populateMap(fullKey string, dest reflect.Value, val reflect.Val
 		return nil
 	}
 
-	if _, ok := val.Interface().(map[string]reflect.Value); !ok {
+	vInt := val.Interface()
+	dInt := dest.Interface()
+
+	if _, ok := vInt.(map[string]reflect.Value); !ok {
 		return errors.New("invalid internal map type. must be map[string]reflect.Value")
 	}
 
-	if _, ok := dest.Interface().(map[string]any); !ok {
+	if _, ok := dInt.(map[string]any); !ok {
 		return errors.New("invalid destination map type. must be map[string]any")
 	}
 
 	for _, key := range val.MapKeys() {
 		exist := dest.MapIndex(key)
-		_fullKey := fmt.Sprintf("%s.%s", fullKey, toLowerCamel(key.String()))
+		var _fullKey string
+		if fullKey == "" {
+			_fullKey = toLowerCamel(key.String())
+		} else {
+			_fullKey = fmt.Sprintf("%s.%s", fullKey, toLowerCamel(key.String()))
+		}
 		_val := val.MapIndex(key)
 		if exist.IsValid() {
 			err := c.populateValue(_fullKey, exist, _val)
@@ -220,7 +286,12 @@ func (c *config) populateMap(fullKey string, dest reflect.Value, val reflect.Val
 		} else {
 			__val := _val.Interface().(reflect.Value)
 			_type := __val.Type()
-			_dest := reflect.New(_type).Elem()
+			var _dest reflect.Value
+			if _type == typeMapStringReflectValue {
+				_dest = reflect.MakeMap(typeMapStringAny)
+			} else {
+				_dest = reflect.New(_type).Elem()
+			}
 			err := c.populateValue(_fullKey, _dest, __val)
 			if err != nil {
 				return err
@@ -239,16 +310,17 @@ func (c *config) populateStruct(fullKey string, dest reflect.Value, val reflect.
 		return nil
 	}
 
+	// TODO - consider keys which are not present in the map
+
 	if valMap, valMapOk := val.Interface().(map[string]reflect.Value); valMapOk {
 
 		for i := 0; i < dest.NumField(); i++ {
 			f := dest.Field(i)
 			name := toLowerCamel(dest.Type().Field(i).Name)
-			if v, ok := valMap[name]; ok {
-				err := c.populateValue(fmt.Sprintf("%s.%s", fullKey, name), f, v)
-				if err != nil {
-					return err
-				}
+			v := valMap[name]
+			err := c.populateValue(fmt.Sprintf("%s.%s", fullKey, name), f, v)
+			if err != nil {
+				return err
 			}
 		}
 	} else {
@@ -326,6 +398,10 @@ func (c *config) withCleanData(callback func() error) error {
 func (c *config) read(fullKey, key string, data map[string]reflect.Value, into any) error {
 	parts := strings.SplitN(key, ".", 2)
 	thisKey := parts[0]
+	if thisKey == "" {
+		// Special case for root of the config
+		return c.fromValue("", reflect.ValueOf(c.root), into)
+	}
 	if tmp, ok := data[thisKey]; ok {
 		if len(parts) == 1 {
 			return c.fromValue(fullKey, tmp, into)
@@ -337,8 +413,8 @@ func (c *config) read(fullKey, key string, data map[string]reflect.Value, into a
 			}
 		}
 	} else {
-		// Doesn't exist, don't write value. Simply return
-		return nil
+		// We still populate the value in the case it is a struct and we can lookup keys based on fields
+		return c.fromValue(fullKey, reflect.New(typeMapStringReflectValue).Elem(), into)
 	}
 }
 

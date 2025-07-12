@@ -1,0 +1,9 @@
+{
+  "hostname": "example.org",
+  "numThreads": 2,
+  "devMode": true,
+  "database": {
+    "host": "dbhost",
+    "user": "dbuser"
+  }
+}

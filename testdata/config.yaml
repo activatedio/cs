@@ -1,0 +1,7 @@
+---
+displayName: "Display Name"
+sleepSeconds: 60
+enabled: true
+content:
+  title: "Some title"
+  footer: "Some footer"
