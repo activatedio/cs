@@ -1,6 +1,6 @@
 module github.com/activatedio/config
 
-go 1.23.4
+go 1.22.0
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
