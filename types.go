@@ -9,6 +9,7 @@ package config
 // Source returns a key, the config object, and an error
 type Source func() (string, any, error)
 
+// LateBindingSource source returns a config value for a given key at the time a configuration is read
 type LateBindingSource func(key string) (any, error)
 
 // Config is main interface for config data.  Keys are in dot format, `prefix.name`

@@ -3,10 +3,11 @@ package config
 import (
 	"errors"
 	"fmt"
-	"github.com/spf13/cast"
 	"reflect"
 	"strings"
 	"sync"
+
+	"github.com/spf13/cast"
 )
 
 type config struct {
@@ -72,26 +73,24 @@ func (c *config) toValueMap(key string, v reflect.Value) (map[string]reflect.Val
 	if key == "" {
 		if val, ok := v.Interface().(map[string]reflect.Value); ok {
 			return val, nil
-		} else {
-			return nil, errors.New("invalid root type")
 		}
-	} else {
-		// Build out a map structure
-		val := map[string]reflect.Value{}
-		parts := strings.SplitN(key, ".", 2)
-		thisKey := parts[0]
-		if len(parts) == 1 {
-			val[thisKey] = v
-		} else {
-			rest := parts[1]
-			tmp, err := c.toValueMap(rest, v)
-			if err != nil {
-				return nil, err
-			}
-			val[thisKey] = reflect.ValueOf(tmp)
-		}
-		return val, nil
+		return nil, errors.New("invalid root type")
 	}
+	// Build out a map structure
+	val := map[string]reflect.Value{}
+	parts := strings.SplitN(key, ".", 2)
+	thisKey := parts[0]
+	if len(parts) == 1 {
+		val[thisKey] = v
+	} else {
+		rest := parts[1]
+		tmp, err := c.toValueMap(rest, v)
+		if err != nil {
+			return nil, err
+		}
+		val[thisKey] = reflect.ValueOf(tmp)
+	}
+	return val, nil
 }
 
 func (c *config) toValue(v any) (reflect.Value, error) {
@@ -114,7 +113,7 @@ func (c *config) toValue(v any) (reflect.Value, error) {
 	case reflect.Struct:
 		return c.toValueFromStruct(v)
 	default:
-		return reflect.ValueOf(nil), errors.New(fmt.Sprintf("unsupported kind %s", typ.Kind().String()))
+		return reflect.ValueOf(nil), fmt.Errorf("unsupported kind %s", typ.Kind().String())
 	}
 }
 
@@ -197,11 +196,12 @@ func (c *config) populateValue(fullKey string, dest reflect.Value, val reflect.V
 		// We need to be able to write to the struct
 		return c.populateStruct(fullKey, dest, val)
 	default:
-		return errors.New(fmt.Sprintf("unsupported destination kind %s", dest.Kind().String()))
+		return fmt.Errorf("unsupported destination kind %s", dest.Kind().String())
 	}
 }
 
-func (c *config) castAndSet(dest, src reflect.Value) error {
+func (c *config) castAndSet(dest, src reflect.Value) error { //nolint:gocyclo // switch statement ok for readability
+
 	if dest.Type() == src.Type() {
 		dest.Set(src)
 		return nil
@@ -239,7 +239,7 @@ func (c *config) castAndSet(dest, src reflect.Value) error {
 	case reflect.Bool:
 		val = cast.ToBool(src.Interface())
 	default:
-		return errors.New(fmt.Sprintf("unsupported type %s", dest.Type().String()))
+		return fmt.Errorf("unsupported type %s", dest.Type().String())
 	}
 
 	dest.Set(reflect.ValueOf(val))
@@ -284,15 +284,15 @@ func (c *config) populateMap(fullKey string, dest reflect.Value, val reflect.Val
 				return err
 			}
 		} else {
-			__val := _val.Interface().(reflect.Value)
-			_type := __val.Type()
+			tmp := _val.Interface().(reflect.Value)
+			_type := tmp.Type()
 			var _dest reflect.Value
 			if _type == typeMapStringReflectValue {
 				_dest = reflect.MakeMap(typeMapStringAny)
 			} else {
 				_dest = reflect.New(_type).Elem()
 			}
-			err := c.populateValue(_fullKey, _dest, __val)
+			err := c.populateValue(_fullKey, _dest, tmp)
 			if err != nil {
 				return err
 			}
@@ -331,24 +331,24 @@ func (c *config) populateStruct(fullKey string, dest reflect.Value, val reflect.
 	return nil
 }
 
-func (c *config) replaceOrMergeValues(existing reflect.Value, new reflect.Value) (reflect.Value, error) {
+func (c *config) replaceOrMergeValues(existing reflect.Value, value reflect.Value) (reflect.Value, error) {
 
 	switch existing.Kind() {
 	case reflect.String, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
 		reflect.Float32, reflect.Float64,
 		reflect.Bool:
-		if new.Kind() == reflect.Map {
-			return reflect.Value{}, errors.New(fmt.Sprintf("cannot overrwrite type %s with a map", existing.Kind().String()))
+		if value.Kind() == reflect.Map {
+			return reflect.Value{}, fmt.Errorf("cannot overrwrite type %s with a map", existing.Kind().String())
 		}
-		return new, nil
+		return value, nil
 	case reflect.Map:
-		if new.Kind() != reflect.Map {
-			return reflect.Value{}, errors.New(fmt.Sprintf("invalid value for map target %s", new.Kind().String()))
+		if value.Kind() != reflect.Map {
+			return reflect.Value{}, fmt.Errorf("invalid value for map target %s", value.Kind().String())
 		}
 		// New must also be the same type
 		if eMap, eOk := existing.Interface().(map[string]reflect.Value); eOk {
-			if nMap, nOk := new.Interface().(map[string]reflect.Value); nOk {
+			if nMap, nOk := value.Interface().(map[string]reflect.Value); nOk {
 				for k, v := range nMap {
 					if el, elOk := eMap[k]; elOk {
 						// map contains value, we merge
@@ -364,11 +364,10 @@ func (c *config) replaceOrMergeValues(existing reflect.Value, new reflect.Value)
 				return reflect.Value{}, errors.New("new is unexpectedly not a map[string]reflect.Value")
 			}
 			return existing, nil
-		} else {
-			return reflect.Value{}, errors.New("destination is unexpectedly not a map[string]reflect.Value")
 		}
+		return reflect.Value{}, errors.New("destination is unexpectedly not a map[string]reflect.Value")
 	default:
-		return reflect.Value{}, errors.New(fmt.Sprintf("unsupported existing kind %s", existing.Kind().String()))
+		return reflect.Value{}, fmt.Errorf("unsupported existing kind %s", existing.Kind().String())
 	}
 }
 
@@ -405,17 +404,13 @@ func (c *config) read(fullKey, key string, data map[string]reflect.Value, into a
 	if tmp, ok := data[thisKey]; ok {
 		if len(parts) == 1 {
 			return c.fromValue(fullKey, tmp, into)
-		} else {
-			if data, ok = tmp.Interface().(map[string]reflect.Value); ok {
-				return c.read(fullKey, parts[1], data, into)
-			} else {
-				return errors.New(fmt.Sprintf("invalid type for key %s", thisKey))
-			}
+		} else if data, ok = tmp.Interface().(map[string]reflect.Value); ok {
+			return c.read(fullKey, parts[1], data, into)
 		}
-	} else {
-		// We still populate the value in the case it is a struct and we can lookup keys based on fields
-		return c.fromValue(fullKey, reflect.New(typeMapStringReflectValue).Elem(), into)
+		return fmt.Errorf("invalid type for key %s", thisKey)
 	}
+	// We still populate the value in the case it is a struct and we can lookup keys based on fields
+	return c.fromValue(fullKey, reflect.New(typeMapStringReflectValue).Elem(), into)
 }
 
 func (c *config) Read(key string, into any) error {

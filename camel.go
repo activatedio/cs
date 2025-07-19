@@ -34,15 +34,19 @@ import (
 
 var uppercaseAcronym = sync.Map{}
 
-//"ID": "id",
+// "ID": "id",
 
 // ConfigureAcronym allows you to add additional words which will be considered acronyms
+/*
+// Leaving this here for now in case we want to include it and better manage the acronyms for config
 func configureAcronym(key, val string) {
 	uppercaseAcronym.Store(key, val)
 }
 
+*/
+
 // Converts a string to CamelCase
-func toCamelInitCase(s string, initCase bool) string {
+func toCamelInitCase(s string, initCase bool) string { //nolint:gocyclo // acceptable complexity for readability
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return s
@@ -59,20 +63,22 @@ func toCamelInitCase(s string, initCase bool) string {
 	for i, v := range []byte(s) {
 		vIsCap := v >= 'A' && v <= 'Z'
 		vIsLow := v >= 'a' && v <= 'z'
-		if capNext {
+		switch {
+		case capNext:
 			if vIsLow {
 				v += 'A'
 				v -= 'a'
 			}
-		} else if i == 0 {
+		case i == 0:
 			if vIsCap {
 				v += 'a'
 				v -= 'A'
 			}
-		} else if prevIsCap && vIsCap && !hasAcronym {
+		case prevIsCap && vIsCap && !hasAcronym:
 			v += 'a'
 			v -= 'A'
 		}
+
 		prevIsCap = vIsCap
 
 		if vIsCap || vIsLow {

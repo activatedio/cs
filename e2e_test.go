@@ -1,13 +1,14 @@
 package config_test
 
 import (
+	"os"
+	"testing"
+
 	"github.com/activatedio/config"
 	"github.com/activatedio/config/sources"
 	"github.com/activatedio/config/sources/json"
 	"github.com/activatedio/config/sources/yaml"
 	"github.com/stretchr/testify/assert"
-	"os"
-	"testing"
 )
 
 func TestMultipleSources(t *testing.T) {

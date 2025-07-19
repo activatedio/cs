@@ -1,9 +1,10 @@
 package config_test
 
 import (
+	"testing"
+
 	"github.com/activatedio/config"
 	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 type SimpleConfig struct {
@@ -21,15 +22,19 @@ func TestConfig(t *testing.T) {
 		assert  func(c config.Config)
 	}
 
+	const key1 = "key1"
+	const key2 = "key2"
+	const value1 = "value1"
+	const value2 = "value2"
 	cases := map[string]s{
 		"empty": {
-			arrange: func(c config.Config) {
+			arrange: func(_ config.Config) {
 			},
 			assert: func(c config.Config) {
 				var got1 string
 				var got2 string
-				c.MustRead("key1", &got1)
-				c.MustRead("key2", &got2)
+				c.MustRead(key1, &got1)
+				c.MustRead(key2, &got2)
 				a.Empty(got1)
 				a.Empty(got2)
 			},
@@ -37,32 +42,32 @@ func TestConfig(t *testing.T) {
 		"simple strings": {
 			arrange: func(c config.Config) {
 				c.AddSource(func() (string, any, error) {
-					return "key1", "value1", nil
+					return key1, value1, nil
 				})
 				c.AddSource(func() (string, any, error) {
-					return "key2", "value2", nil
+					return key2, value2, nil
 				})
 			},
 			assert: func(c config.Config) {
 				var got1 string
 				var got2 string
-				c.MustRead("key1", &got1)
-				c.MustRead("key2", &got2)
-				a.Equal("value1", got1)
-				a.Equal("value2", got2)
+				c.MustRead(key1, &got1)
+				c.MustRead(key2, &got2)
+				a.Equal(value1, got1)
+				a.Equal(value2, got2)
 			},
 		},
 		"simple structs": {
 			arrange: func(c config.Config) {
 				c.AddSource(func() (string, any, error) {
-					return "key1", &SimpleConfig{
+					return key1, &SimpleConfig{
 						Value1: "a",
 						Value2: 2,
 						Value3: true,
 					}, nil
 				})
 				c.AddSource(func() (string, any, error) {
-					return "key2", &SimpleConfig{
+					return key2, &SimpleConfig{
 						Value1: "d",
 						Value2: 3,
 						Value3: false,
@@ -79,7 +84,7 @@ func TestConfig(t *testing.T) {
 				a.Equal("d", got2)
 
 				got3 := &SimpleConfig{}
-				c.MustRead("key1", got3)
+				c.MustRead(key1, got3)
 				a.Equal(&SimpleConfig{
 					Value1: "a",
 					Value2: 2,
@@ -91,16 +96,16 @@ func TestConfig(t *testing.T) {
 		"simple maps": {
 			arrange: func(c config.Config) {
 				c.AddSource(func() (string, any, error) {
-					return "key1", map[string]any{
-						"value1": "a",
-						"value2": 2,
+					return key1, map[string]any{
+						value1:   "a",
+						value2:   2,
 						"value3": true,
 					}, nil
 				})
 				c.AddSource(func() (string, any, error) {
-					return "key2", map[string]any{
-						"value1": "d",
-						"value2": 3,
+					return key2, map[string]any{
+						value1:   "d",
+						value2:   3,
 						"value3": false,
 					}, nil
 				})
@@ -115,10 +120,10 @@ func TestConfig(t *testing.T) {
 				a.Equal("d", got2)
 
 				got3 := map[string]any{}
-				c.MustRead("key1", &got3)
+				c.MustRead(key1, &got3)
 				a.Equal(map[string]any{
-					"value1": "a",
-					"value2": 2,
+					value1:   "a",
+					value2:   2,
 					"value3": true,
 				}, got3)
 
@@ -127,7 +132,7 @@ func TestConfig(t *testing.T) {
 		"simple overrides": {
 			arrange: func(c config.Config) {
 				c.AddSource(func() (string, any, error) {
-					return "key1", &SimpleConfig{
+					return key1, &SimpleConfig{
 						Value1: "a",
 						Value2: 2,
 						Value3: true,
@@ -147,7 +152,7 @@ func TestConfig(t *testing.T) {
 		"late bindings overrides": {
 			arrange: func(c config.Config) {
 				c.AddSource(func() (string, any, error) {
-					return "key1", &SimpleConfig{
+					return key1, &SimpleConfig{
 						Value1: "a",
 						Value2: 2,
 						Value3: true,
@@ -156,10 +161,8 @@ func TestConfig(t *testing.T) {
 				c.AddLateBindingSource(func(key string) (any, error) {
 					if key == "key1.value2" {
 						return 3, nil
-					} else {
-						return nil, nil
 					}
-
+					return nil, nil
 				})
 			},
 			assert: func(c config.Config) {
@@ -172,7 +175,7 @@ func TestConfig(t *testing.T) {
 	}
 
 	for k, v := range cases {
-		t.Run(k, func(t *testing.T) {
+		t.Run(k, func(_ *testing.T) {
 			unit := config.NewConfig()
 			v.arrange(unit)
 			// Run assert twice to check for caching

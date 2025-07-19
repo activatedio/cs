@@ -1,5 +1,6 @@
 package config
 
+// NewConfig returns a new config object
 func NewConfig() Config {
 	return newCachedConfig()
 }

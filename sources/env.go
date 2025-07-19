@@ -2,16 +2,22 @@ package sources
 
 import (
 	"fmt"
-	"github.com/activatedio/config"
 	"os"
 	"regexp"
 	"strings"
+
+	"github.com/activatedio/config"
 )
 
 // From https://stackoverflow.com/a/56616250
 var matchFirstCap = regexp.MustCompile("(.)([A-Z][a-z]+)")
 var matchAllCap = regexp.MustCompile("([a-z0-9])([A-Z])")
 
+// NewEnvLateBindingSource creates a config.LateBindingSource which reads from environment variables
+//
+// Dot-separated lower camel case keys are converted into upper snake case for lookup.
+//
+// If non-empty envPrefix is provided, it will be prepended to the key in format [envPrefix]_[key]
 func NewEnvLateBindingSource(envPrefix string) config.LateBindingSource {
 	return func(key string) (any, error) {
 
@@ -27,8 +33,7 @@ func NewEnvLateBindingSource(envPrefix string) config.LateBindingSource {
 		val := os.Getenv(snake)
 		if val == "" {
 			return nil, nil
-		} else {
-			return val, nil
 		}
+		return val, nil
 	}
 }

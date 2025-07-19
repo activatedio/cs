@@ -50,6 +50,8 @@ linters:
       check-blank: false
       exclude-functions:
         - io/ioutil.ReadFile
+    exhaustive:
+      default-signifies-exhaustive: true
     goconst:
       min-len: 3
       min-occurrences: 5
@@ -112,6 +114,9 @@ linters:
       - linters:
           - musttag
         path: k8s.io/
+      - linters: 
+         - errcheck
+        source: "^\\s*defer\\s+"
     paths:
       - third_party$
       - builtin$
