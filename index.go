@@ -1,14 +1,14 @@
-package config
+package cs
 
-// NewConfig returns a new config object
+// NewConfig returns a new cs object
 func NewConfig() Config {
 	return newCachedConfig()
 }
 
-// config is the global config object
+// cs is the global cs object
 var global = newCachedConfig()
 
-// AddSource adds a source to build the root config object. Sources are invoked in the order they are added.
+// AddSource adds a source to build the root cs object. Sources are invoked in the order they are added.
 // Sources added later take predecent over sources added earlier
 func AddSource(src Source) {
 	global.AddSource(src)

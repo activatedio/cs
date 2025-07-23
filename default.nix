@@ -1,7 +1,7 @@
 with import <nixpkgs> {};
 
 stdenv.mkDerivation {
-  name = "config";
+  name = "cs";
   buildInputs = with pkgs; [
     go
     gnumake

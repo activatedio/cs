@@ -25,7 +25,7 @@
 
 // From https://github.com/iancoleman/strcase/blob/master/camel.go
 
-package config
+package cs
 
 import (
 	"strings"
@@ -38,8 +38,8 @@ var uppercaseAcronym = sync.Map{}
 
 // ConfigureAcronym allows you to add additional words which will be considered acronyms
 /*
-// Leaving this here for now in case we want to include it and better manage the acronyms for config
-func configureAcronym(key, val string) {
+// Leaving this here for now in case we want to include it and better manage the acronyms for cs
+func csureAcronym(key, val string) {
 	uppercaseAcronym.Store(key, val)
 }
 

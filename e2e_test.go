@@ -1,13 +1,13 @@
-package config_test
+package cs_test
 
 import (
 	"os"
 	"testing"
 
-	"github.com/activatedio/config"
-	"github.com/activatedio/config/sources"
-	"github.com/activatedio/config/sources/json"
-	"github.com/activatedio/config/sources/yaml"
+	"github.com/activatedio/cs"
+	"github.com/activatedio/cs/sources"
+	"github.com/activatedio/cs/sources/json"
+	"github.com/activatedio/cs/sources/yaml"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -15,12 +15,12 @@ func TestMultipleSources(t *testing.T) {
 
 	a := assert.New(t)
 
-	unit := config.NewConfig()
+	unit := cs.NewConfig()
 
-	unit.AddSource(yaml.NewSourceFromPath("testdata/config.yaml", "prefixA"))
-	unit.AddSource(json.NewSourceFromPath("testdata/config.json", "prefixB"))
-	unit.AddSource(yaml.NewSourceFromPath("testdata/config.yaml", ""))
-	unit.AddSource(json.NewSourceFromPath("testdata/config.json", ""))
+	unit.AddSource(yaml.NewSourceFromPath("testdata/cs.yaml", "prefixA"))
+	unit.AddSource(json.NewSourceFromPath("testdata/cs.json", "prefixB"))
+	unit.AddSource(yaml.NewSourceFromPath("testdata/cs.yaml", ""))
+	unit.AddSource(json.NewSourceFromPath("testdata/cs.json", ""))
 	unit.AddLateBindingSource(sources.NewEnvLateBindingSource("TEST"))
 
 	res := map[string]any{}
@@ -81,7 +81,7 @@ func TestEnvironmentVariablesOnly(t *testing.T) {
 
 	a := assert.New(t)
 
-	unit := config.NewConfig()
+	unit := cs.NewConfig()
 	unit.AddLateBindingSource(sources.NewEnvLateBindingSource("TEST"))
 
 	got := &Dummy{}

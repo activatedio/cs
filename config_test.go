@@ -1,9 +1,9 @@
-package config_test
+package cs_test
 
 import (
 	"testing"
 
-	"github.com/activatedio/config"
+	"github.com/activatedio/cs"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -18,8 +18,8 @@ func TestConfig(t *testing.T) {
 	a := assert.New(t)
 
 	type s struct {
-		arrange func(c config.Config)
-		assert  func(c config.Config)
+		arrange func(c cs.Config)
+		assert  func(c cs.Config)
 	}
 
 	const key1 = "key1"
@@ -28,9 +28,9 @@ func TestConfig(t *testing.T) {
 	const value2 = "value2"
 	cases := map[string]s{
 		"empty": {
-			arrange: func(_ config.Config) {
+			arrange: func(_ cs.Config) {
 			},
-			assert: func(c config.Config) {
+			assert: func(c cs.Config) {
 				var got1 string
 				var got2 string
 				c.MustRead(key1, &got1)
@@ -40,7 +40,7 @@ func TestConfig(t *testing.T) {
 			},
 		},
 		"simple strings": {
-			arrange: func(c config.Config) {
+			arrange: func(c cs.Config) {
 				c.AddSource(func() (string, any, error) {
 					return key1, value1, nil
 				})
@@ -48,7 +48,7 @@ func TestConfig(t *testing.T) {
 					return key2, value2, nil
 				})
 			},
-			assert: func(c config.Config) {
+			assert: func(c cs.Config) {
 				var got1 string
 				var got2 string
 				c.MustRead(key1, &got1)
@@ -58,7 +58,7 @@ func TestConfig(t *testing.T) {
 			},
 		},
 		"simple structs": {
-			arrange: func(c config.Config) {
+			arrange: func(c cs.Config) {
 				c.AddSource(func() (string, any, error) {
 					return key1, &SimpleConfig{
 						Value1: "a",
@@ -74,7 +74,7 @@ func TestConfig(t *testing.T) {
 					}, nil
 				})
 			},
-			assert: func(c config.Config) {
+			assert: func(c cs.Config) {
 				var got1 string
 				var got2 string
 				// We can read individual strings
@@ -94,7 +94,7 @@ func TestConfig(t *testing.T) {
 			},
 		},
 		"simple maps": {
-			arrange: func(c config.Config) {
+			arrange: func(c cs.Config) {
 				c.AddSource(func() (string, any, error) {
 					return key1, map[string]any{
 						value1:   "a",
@@ -110,7 +110,7 @@ func TestConfig(t *testing.T) {
 					}, nil
 				})
 			},
-			assert: func(c config.Config) {
+			assert: func(c cs.Config) {
 				var got1 string
 				var got2 string
 				// We can read individual strings
@@ -130,7 +130,7 @@ func TestConfig(t *testing.T) {
 			},
 		},
 		"simple overrides": {
-			arrange: func(c config.Config) {
+			arrange: func(c cs.Config) {
 				c.AddSource(func() (string, any, error) {
 					return key1, &SimpleConfig{
 						Value1: "a",
@@ -142,7 +142,7 @@ func TestConfig(t *testing.T) {
 					return "key1.value2", 3, nil
 				})
 			},
-			assert: func(c config.Config) {
+			assert: func(c cs.Config) {
 				var got1 int
 				// We can read individual strings
 				c.MustRead("key1.value2", &got1)
@@ -150,7 +150,7 @@ func TestConfig(t *testing.T) {
 			},
 		},
 		"late bindings overrides": {
-			arrange: func(c config.Config) {
+			arrange: func(c cs.Config) {
 				c.AddSource(func() (string, any, error) {
 					return key1, &SimpleConfig{
 						Value1: "a",
@@ -165,7 +165,7 @@ func TestConfig(t *testing.T) {
 					return nil, nil
 				})
 			},
-			assert: func(c config.Config) {
+			assert: func(c cs.Config) {
 				var got1 int
 				// We can read individual strings
 				c.MustRead("key1.value2", &got1)
@@ -176,7 +176,7 @@ func TestConfig(t *testing.T) {
 
 	for k, v := range cases {
 		t.Run(k, func(_ *testing.T) {
-			unit := config.NewConfig()
+			unit := cs.NewConfig()
 			v.arrange(unit)
 			// Run assert twice to check for caching
 			v.assert(unit)

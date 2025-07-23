@@ -1,17 +1,17 @@
-// Package json supports config sources from json files
+// Package json supports cs sources from json files
 package json
 
 import (
 	"encoding/json"
 	"os"
 
-	"github.com/activatedio/config"
+	"github.com/activatedio/cs"
 )
 
 // NewSourceFromPath creates a new source by parsing a json file at the given path
 //
 // A non-empty keyPrefix will prepend the prefix to stored keys, in format [keyPrefix].[key]
-func NewSourceFromPath(path, keyPrefix string) config.Source {
+func NewSourceFromPath(path, keyPrefix string) cs.Source {
 	return func() (string, any, error) {
 
 		res := map[string]any{}

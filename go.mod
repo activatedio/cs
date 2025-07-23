@@ -1,4 +1,4 @@
-module github.com/activatedio/config
+module github.com/activatedio/cs
 
 go 1.22.0
 

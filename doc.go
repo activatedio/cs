@@ -1,2 +1,2 @@
-// Package config is the main package for the config library
-package config
+// Package cs is the main package for the cs library
+package cs

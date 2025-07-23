@@ -1,4 +1,4 @@
-package config
+package cs
 
 import (
 	"errors"
@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/cast"
 )
 
-type config struct {
+type cs struct {
 	sources            []Source
 	lateBindingSources []LateBindingSource
 	dirty              bool
@@ -18,7 +18,7 @@ type config struct {
 	lock               sync.RWMutex
 }
 
-func (c *config) AddSource(src Source) {
+func (c *cs) AddSource(src Source) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -26,7 +26,7 @@ func (c *config) AddSource(src Source) {
 	c.dirty = true
 }
 
-func (c *config) AddLateBindingSource(src LateBindingSource) {
+func (c *cs) AddLateBindingSource(src LateBindingSource) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -34,7 +34,7 @@ func (c *config) AddLateBindingSource(src LateBindingSource) {
 	c.dirty = true
 }
 
-func (c *config) loadData() error {
+func (c *cs) loadData() error {
 
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -68,7 +68,7 @@ func (c *config) loadData() error {
 	return nil
 }
 
-func (c *config) toValueMap(key string, v reflect.Value) (map[string]reflect.Value, error) {
+func (c *cs) toValueMap(key string, v reflect.Value) (map[string]reflect.Value, error) {
 
 	if key == "" {
 		if val, ok := v.Interface().(map[string]reflect.Value); ok {
@@ -93,7 +93,7 @@ func (c *config) toValueMap(key string, v reflect.Value) (map[string]reflect.Val
 	return val, nil
 }
 
-func (c *config) toValue(v any) (reflect.Value, error) {
+func (c *cs) toValue(v any) (reflect.Value, error) {
 	typ := reflect.TypeOf(v)
 
 	if typ.Kind() == reflect.Ptr {
@@ -117,7 +117,7 @@ func (c *config) toValue(v any) (reflect.Value, error) {
 	}
 }
 
-func (c *config) toValueFromMap(v any) (reflect.Value, error) {
+func (c *cs) toValueFromMap(v any) (reflect.Value, error) {
 	// We assume this is a struct and convert this to a map of values
 	res := map[string]reflect.Value{}
 	if val, ok := v.(map[string]any); ok {
@@ -135,7 +135,7 @@ func (c *config) toValueFromMap(v any) (reflect.Value, error) {
 	return reflect.ValueOf(res), nil
 }
 
-func (c *config) toValueFromStruct(v any) (reflect.Value, error) {
+func (c *cs) toValueFromStruct(v any) (reflect.Value, error) {
 	// We assume this is a struct and convert this to a map of values
 	res := map[string]reflect.Value{}
 	val := reflect.ValueOf(v)
@@ -154,7 +154,7 @@ func (c *config) toValueFromStruct(v any) (reflect.Value, error) {
 	return reflect.ValueOf(res), nil
 }
 
-func (c *config) fromValue(fullKey string, val reflect.Value, into any) error {
+func (c *cs) fromValue(fullKey string, val reflect.Value, into any) error {
 	dest := reflect.ValueOf(into)
 	if dest.Kind() == reflect.Ptr {
 		dest = dest.Elem()
@@ -162,7 +162,7 @@ func (c *config) fromValue(fullKey string, val reflect.Value, into any) error {
 	return c.populateValue(fullKey, dest, val)
 }
 
-func (c *config) populateValue(fullKey string, dest reflect.Value, val reflect.Value) error {
+func (c *cs) populateValue(fullKey string, dest reflect.Value, val reflect.Value) error {
 	switch dest.Kind() {
 	case reflect.String, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
@@ -200,7 +200,7 @@ func (c *config) populateValue(fullKey string, dest reflect.Value, val reflect.V
 	}
 }
 
-func (c *config) castAndSet(dest, src reflect.Value) error { //nolint:gocyclo // switch statement ok for readability
+func (c *cs) castAndSet(dest, src reflect.Value) error { //nolint:gocyclo // switch statement ok for readability
 
 	if dest.Type() == src.Type() {
 		dest.Set(src)
@@ -250,7 +250,7 @@ func (c *config) castAndSet(dest, src reflect.Value) error { //nolint:gocyclo //
 var typeMapStringReflectValue = reflect.TypeFor[map[string]reflect.Value]()
 var typeMapStringAny = reflect.TypeFor[map[string]any]()
 
-func (c *config) populateMap(fullKey string, dest reflect.Value, val reflect.Value) error {
+func (c *cs) populateMap(fullKey string, dest reflect.Value, val reflect.Value) error {
 
 	// type must be map[string]reflect.Value
 	if val.Kind() != reflect.Map {
@@ -302,7 +302,7 @@ func (c *config) populateMap(fullKey string, dest reflect.Value, val reflect.Val
 	return nil
 }
 
-func (c *config) populateStruct(fullKey string, dest reflect.Value, val reflect.Value) error {
+func (c *cs) populateStruct(fullKey string, dest reflect.Value, val reflect.Value) error {
 
 	// type must be map[string]reflect.Value
 	if val.Kind() != reflect.Map {
@@ -331,7 +331,7 @@ func (c *config) populateStruct(fullKey string, dest reflect.Value, val reflect.
 	return nil
 }
 
-func (c *config) replaceOrMergeValues(existing reflect.Value, value reflect.Value) (reflect.Value, error) {
+func (c *cs) replaceOrMergeValues(existing reflect.Value, value reflect.Value) (reflect.Value, error) {
 
 	switch existing.Kind() {
 	case reflect.String, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
@@ -371,7 +371,7 @@ func (c *config) replaceOrMergeValues(existing reflect.Value, value reflect.Valu
 	}
 }
 
-func (c *config) withCleanData(callback func() error) error {
+func (c *cs) withCleanData(callback func() error) error {
 	c.lock.RLock()
 
 	if c.dirty {
@@ -394,11 +394,11 @@ func (c *config) withCleanData(callback func() error) error {
 
 }
 
-func (c *config) read(fullKey, key string, data map[string]reflect.Value, into any) error {
+func (c *cs) read(fullKey, key string, data map[string]reflect.Value, into any) error {
 	parts := strings.SplitN(key, ".", 2)
 	thisKey := parts[0]
 	if thisKey == "" {
-		// Special case for root of the config
+		// Special case for root of the cs
 		return c.fromValue("", reflect.ValueOf(c.root), into)
 	}
 	if tmp, ok := data[thisKey]; ok {
@@ -413,7 +413,7 @@ func (c *config) read(fullKey, key string, data map[string]reflect.Value, into a
 	return c.fromValue(fullKey, reflect.New(typeMapStringReflectValue).Elem(), into)
 }
 
-func (c *config) Read(key string, into any) error {
+func (c *cs) Read(key string, into any) error {
 	if reflect.ValueOf(into).Kind() != reflect.Ptr {
 		return errors.New("into must be a pointer")
 	}
@@ -422,14 +422,14 @@ func (c *config) Read(key string, into any) error {
 	})
 }
 
-func (c *config) MustRead(key string, into any) {
+func (c *cs) MustRead(key string, into any) {
 	if err := c.Read(key, into); err != nil {
 		panic(err)
 	}
 }
 
 func newConfig() Config {
-	return &config{
+	return &cs{
 		root: map[string]reflect.Value{},
 	}
 }

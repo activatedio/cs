@@ -1,46 +1,46 @@
 > ## Config
 >
-> This is a new library aiming to simplify runtime configuration for Go
+> This is a new library aiming to simplify runtime csuration for Go
 > applications. Expect more updates shortly.
 >
 
 
-[![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/activatedio/config/ci.yaml?branch=main&style=flat-square)](https://github.com/activatedio/config/actions?query=workflow%3ACI)
-[![Go Report Card](https://goreportcard.com/badge/github.com/activatedio/config?style=flat-square)](https://goreportcard.com/report/github.com/activatedio/config)
-![Go Version](https://img.shields.io/github/go-mod/go-version/activatedio/config?style=flat-square)
-[![PkgGoDev](https://pkg.go.dev/badge/mod/github.com/activatedio/config)](https://pkg.go.dev/mod/github.com/activatedio/config)
+[![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/activatedio/cs/ci.yaml?branch=main&style=flat-square)](https://github.com/activatedio/cs/actions?query=workflow%3ACI)
+[![Go Report Card](https://goreportcard.com/badge/github.com/activatedio/cs?style=flat-square)](https://goreportcard.com/report/github.com/activatedio/cs)
+![Go Version](https://img.shields.io/github/go-mod/go-version/activatedio/cs?style=flat-square)
+[![PkgGoDev](https://pkg.go.dev/badge/mod/github.com/activatedio/cs)](https://pkg.go.dev/mod/github.com/activatedio/cs)
 
 # Config
 
-Runtime library for flexible configuration.
+Runtime library for flexible csuration.
 
 ## Install
 
 ``` sh
-go get -u github.com/activatedio/config
+go get -u github.com/activatedio/cs
 
 ```
 
 ## Usage
 
-The following example shows how to create a new config, add sources, and retrieve values
+The following example shows how to create a new cs, add sources, and retrieve values
 
 ``` go
 
-cfg := config.New()
+cfg := cs.New()
 
-cfg.AddSource(config.FromYAMLFile("config.yaml"))
+cfg.AddSource(cs.FromYAMLFile("cs.yaml"))
 // Can be strings, maps or structs
-cfg.AddSource(config.FromValue("prefix.key", "value"))
-cfg.AddLateBindingSource(config.FromEnvironmentVars())
+cfg.AddSource(cs.FromValue("prefix.key", "value"))
+cfg.AddLateBindingSource(cs.FromEnvironmentVars())
 
 // Read reads value
 var val *string
-err := config.Read("prefix.key", val)
+err := cs.Read("prefix.key", val)
 
 // MustRead does the same but panics on error
 //var val *string
-//config.MustRead("prefix.key", val)
+//cs.MustRead("prefix.key", val)
 
 
 fmt.Println(val)

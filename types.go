@@ -1,4 +1,4 @@
-package config
+package cs
 
 // Source and LateBindingSource can return
 // map[string]any
@@ -6,16 +6,16 @@ package config
 // any primitive type, expect byte, or uintptr
 // slice of any of the above types
 
-// Source returns a key, the config object, and an error
+// Source returns a key, the cs object, and an error
 type Source func() (string, any, error)
 
-// LateBindingSource source returns a config value for a given key at the time a configuration is read
+// LateBindingSource source returns a cs value for a given key at the time a csuration is read
 type LateBindingSource func(key string) (any, error)
 
-// Config is main interface for config data.  Keys are in dot format, `prefix.name`
+// Config is main interface for cs data.  Keys are in dot format, `prefix.name`
 type Config interface {
 
-	// AddSource adds a source to build the root config object. Sources are invoked in the order they are added.
+	// AddSource adds a source to build the root cs object. Sources are invoked in the order they are added.
 	// Sources added later take predecent over sources added earlier
 	AddSource(src Source)
 

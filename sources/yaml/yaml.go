@@ -1,17 +1,17 @@
-// Package yaml support config sources from yaml files
+// Package yaml support cs sources from yaml files
 package yaml
 
 import (
 	"os"
 
-	"github.com/activatedio/config"
+	"github.com/activatedio/cs"
 	"gopkg.in/yaml.v3"
 )
 
 // NewSourceFromPath creates a new source by parsing a yaml file at the given path
 //
 // A non-empty keyPrefix will prepend the prefix to stored keys, in format [keyPrefix].[key]
-func NewSourceFromPath(path, keyPrefix string) config.Source {
+func NewSourceFromPath(path, keyPrefix string) cs.Source {
 	return func() (string, any, error) {
 
 		res := map[string]any{}
