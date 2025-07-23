@@ -1,6 +1,6 @@
-> ## Config
+> ## CS
 >
-> This is a new library aiming to simplify runtime csuration for Go
+> This is a new library aiming to simplify runtime configuration for Go
 > applications. Expect more updates shortly.
 >
 
@@ -10,9 +10,9 @@
 ![Go Version](https://img.shields.io/github/go-mod/go-version/activatedio/cs?style=flat-square)
 [![PkgGoDev](https://pkg.go.dev/badge/mod/github.com/activatedio/cs)](https://pkg.go.dev/mod/github.com/activatedio/cs)
 
-# Config
+# CS
 
-Runtime library for flexible csuration.
+CS - Config Source - Runtime library for flexible configuration.
 
 ## Install
 
@@ -23,7 +23,7 @@ go get -u github.com/activatedio/cs
 
 ## Usage
 
-The following example shows how to create a new cs, add sources, and retrieve values
+The following example shows how to create a new config, add sources, and retrieve values
 
 ``` go
 
