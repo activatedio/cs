@@ -17,10 +17,10 @@ func TestMultipleSources(t *testing.T) {
 
 	unit := cs.NewConfig()
 
-	unit.AddSource(yaml.NewSourceFromPath("testdata/cs.yaml", "prefixA"))
-	unit.AddSource(json.NewSourceFromPath("testdata/cs.json", "prefixB"))
-	unit.AddSource(yaml.NewSourceFromPath("testdata/cs.yaml", ""))
-	unit.AddSource(json.NewSourceFromPath("testdata/cs.json", ""))
+	unit.AddSource(yaml.NewSourceFromPath("testdata/config.yaml", "prefixA"))
+	unit.AddSource(json.NewSourceFromPath("testdata/config.json", "prefixB"))
+	unit.AddSource(yaml.NewSourceFromPath("testdata/config.yaml", ""))
+	unit.AddSource(json.NewSourceFromPath("testdata/config.json", ""))
 	unit.AddLateBindingSource(sources.NewEnvLateBindingSource("TEST"))
 
 	res := map[string]any{}
