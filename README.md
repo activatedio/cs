@@ -7,8 +7,6 @@
 
 [![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/activatedio/cs/ci.yaml?branch=main&style=flat-square)](https://github.com/activatedio/cs/actions?query=workflow%3ACI)
 [![Go Report Card](https://goreportcard.com/badge/github.com/activatedio/cs?style=flat-square)](https://goreportcard.com/report/github.com/activatedio/cs)
-![Go Version](https://img.shields.io/github/go-mod/go-version/activatedio/cs?style=flat-square)
-[![PkgGoDev](https://pkg.go.dev/badge/mod/github.com/activatedio/cs)](https://pkg.go.dev/mod/github.com/activatedio/cs)
 
 # CS
 
