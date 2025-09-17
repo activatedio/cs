@@ -16,6 +16,14 @@ type cs struct {
 	dirty              bool
 	root               map[string]reflect.Value
 	lock               sync.RWMutex
+	validatingHook     func(in any) error
+}
+
+func (c *cs) SetValidatingHook(f func(in any) error) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	c.validatingHook = f
 }
 
 func (c *cs) AddSource(src Source) {
@@ -163,10 +171,7 @@ func (c *cs) fromValue(fullKey string, val reflect.Value, into any) error {
 	if err != nil {
 		return err
 	}
-	if v, ok := into.(Validating); ok {
-		return v.Validate()
-	}
-	return nil
+	return c.validatingHook(into)
 }
 
 func (c *cs) populateValue(fullKey string, dest reflect.Value, val reflect.Value) error {
@@ -438,5 +443,11 @@ func (c *cs) MustRead(key string, into any) {
 func newConfig() Config {
 	return &cs{
 		root: map[string]reflect.Value{},
+		validatingHook: func(in any) error {
+			if v, ok := in.(Validating); ok {
+				return v.Validate()
+			}
+			return nil
+		},
 	}
 }

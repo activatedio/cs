@@ -168,6 +168,26 @@ func TestConfig(t *testing.T) {
 				r.EqualError(err, "validation failed")
 			},
 		},
+		"validating struct - custom validation hook with error": {
+			arrange: func(c cs.Config) {
+				c.AddSource(func() (string, any, error) {
+					return key1, &Validating{
+						Value1: "a",
+					}, nil
+				})
+				c.SetValidatingHook(func(in any) error {
+					r.Equal(&Validating{
+						Value1: "a",
+					}, in)
+					return errors.New("validation failed - custom")
+				})
+			},
+			assert: func(c cs.Config) {
+				got := &Validating{}
+				err := c.Read(key1, got)
+				r.EqualError(err, "validation failed - custom")
+			},
+		},
 		"simple maps": {
 			arrange: func(c cs.Config) {
 				c.AddSource(func() (string, any, error) {

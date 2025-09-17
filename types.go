@@ -29,6 +29,10 @@ type Config interface {
 
 	// MustRead reads and panics on error
 	MustRead(key string, into any)
+
+	// SetValidatingHook sets a custom hook for validation. By default the struct is checked to implement Validating and
+	// if so the method is invoked
+	SetValidatingHook(func(in any) error)
 }
 
 // Validating marks a struct with the ability to validate itself after being unmarshalled
