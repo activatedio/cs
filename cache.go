@@ -16,6 +16,10 @@ type cachedConfig struct {
 	lock     sync.RWMutex
 }
 
+func (c *cachedConfig) SetValidatingHook(f func(in any) error) {
+	c.delegate.SetValidatingHook(f)
+}
+
 func (c *cachedConfig) AddSource(src Source) {
 	c.delegate.AddSource(src)
 }
