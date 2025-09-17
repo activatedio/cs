@@ -53,6 +53,12 @@ func (c *cachedConfig) Read(key string, into any) error {
 		return err
 	}
 
+	val = reflect.ValueOf(into)
+	typ = reflect.TypeOf(into)
+	if typ.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+
 	c.cache[cacheKey{Key: key, Typ: typ}] = val
 
 	return nil

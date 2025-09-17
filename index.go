@@ -1,32 +1,24 @@
 package cs
 
-// NewConfig returns a new cs object
-func NewConfig() Config {
+// New returns a new cs object
+func New() Config {
 	return newCachedConfig()
 }
 
-// cs is the global cs object
-var global = newCachedConfig()
+// Get retrieves the value of type T associated with the specified key from the provided Config. Returns an error if retrieval fails.
+func Get[T any](c Config, key string) (T, error) {
 
-// AddSource adds a source to build the root cs object. Sources are invoked in the order they are added.
-// Sources added later take predecent over sources added earlier
-func AddSource(src Source) {
-	global.AddSource(src)
+	res := new(T)
+
+	err := c.Read(key, res)
+
+	return *res, err
 }
 
-// AddLateBindingSource adds a source which is consulted at read time, meaning each property present on the
-// underlying results are looked up again with provided keys
-func AddLateBindingSource(src LateBindingSource) {
-	global.AddLateBindingSource(src)
-}
+// MustGet retrieves the value of type T associated with the specified key from the provided Config. It panics on errors.
+func MustGet[T any](c Config, key string) T {
 
-// Read reads value from the key and assigns it to the provided object, which must be a pointer to a supported value
-// supported values are all primitives and a map
-func Read(key string, into any) error {
-	return global.Read(key, into)
-}
-
-// MustRead reads and panics on error
-func MustRead(key string, into any) {
-	global.MustRead(key, into)
+	res := new(T)
+	c.MustRead(key, res)
+	return *res
 }
