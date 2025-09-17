@@ -1,6 +1,7 @@
 package cs_test
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/activatedio/cs"
@@ -12,6 +13,17 @@ type SimpleConfig struct {
 	Value1 string
 	Value2 int
 	Value3 bool
+}
+
+type Validating struct {
+	Value1 string
+}
+
+func (v *Validating) Validate() error {
+	if v.Value1 == "error" {
+		return errors.New("validation failed")
+	}
+	return nil
 }
 
 func TestConfig(t *testing.T) {
@@ -123,6 +135,37 @@ func TestConfig(t *testing.T) {
 					Value3: true,
 				}, got3)
 
+			},
+		},
+		"validating struct - pass": {
+			arrange: func(c cs.Config) {
+				c.AddSource(func() (string, any, error) {
+					return key1, &Validating{
+						Value1: "a",
+					}, nil
+				})
+			},
+			assert: func(c cs.Config) {
+				got := &Validating{}
+				err := c.Read(key1, got)
+				r.NoError(err)
+				a.Equal(&Validating{
+					Value1: "a",
+				}, got)
+			},
+		},
+		"validating struct - error": {
+			arrange: func(c cs.Config) {
+				c.AddSource(func() (string, any, error) {
+					return key1, &Validating{
+						Value1: "error",
+					}, nil
+				})
+			},
+			assert: func(c cs.Config) {
+				got := &Validating{}
+				err := c.Read(key1, got)
+				r.EqualError(err, "validation failed")
 			},
 		},
 		"simple maps": {

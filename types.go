@@ -30,3 +30,8 @@ type Config interface {
 	// MustRead reads and panics on error
 	MustRead(key string, into any)
 }
+
+// Validating marks a struct with the ability to validate itself after being unmarshalled
+type Validating interface {
+	Validate() error
+}
