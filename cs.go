@@ -430,7 +430,11 @@ func (c *cs) Read(key string, into any) error {
 		return errors.New("into must be a pointer")
 	}
 	return c.withCleanData(func() error {
-		return c.read(key, key, c.root, into)
+		err := c.read(key, key, c.root, into)
+		if err != nil {
+			err = wrapError(into, key, err)
+		}
+		return err
 	})
 }
 

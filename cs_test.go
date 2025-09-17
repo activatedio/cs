@@ -165,7 +165,7 @@ func TestConfig(t *testing.T) {
 			assert: func(c cs.Config) {
 				got := &Validating{}
 				err := c.Read(key1, got)
-				r.EqualError(err, "validation failed")
+				r.EqualError(err, "type: Validating key: key1 detail: validation failed")
 			},
 		},
 		"validating struct - custom validation hook with error": {
@@ -185,7 +185,7 @@ func TestConfig(t *testing.T) {
 			assert: func(c cs.Config) {
 				got := &Validating{}
 				err := c.Read(key1, got)
-				r.EqualError(err, "validation failed - custom")
+				r.EqualError(err, "type: Validating key: key1 detail: validation failed - custom")
 			},
 		},
 		"simple maps": {
