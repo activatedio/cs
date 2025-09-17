@@ -159,7 +159,14 @@ func (c *cs) fromValue(fullKey string, val reflect.Value, into any) error {
 	if dest.Kind() == reflect.Ptr {
 		dest = dest.Elem()
 	}
-	return c.populateValue(fullKey, dest, val)
+	err := c.populateValue(fullKey, dest, val)
+	if err != nil {
+		return err
+	}
+	if v, ok := into.(Validating); ok {
+		return v.Validate()
+	}
+	return nil
 }
 
 func (c *cs) populateValue(fullKey string, dest reflect.Value, val reflect.Value) error {
