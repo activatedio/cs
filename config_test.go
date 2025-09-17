@@ -5,6 +5,7 @@ import (
 
 	"github.com/activatedio/cs"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type SimpleConfig struct {
@@ -16,6 +17,7 @@ type SimpleConfig struct {
 func TestConfig(t *testing.T) {
 
 	a := assert.New(t)
+	r := require.New(t)
 
 	type s struct {
 		arrange func(c cs.Config)
@@ -55,6 +57,19 @@ func TestConfig(t *testing.T) {
 				c.MustRead(key2, &got2)
 				a.Equal(value1, got1)
 				a.Equal(value2, got2)
+
+				// test other accessors
+				got1 = ""
+				got2 = ""
+				got1 = cs.MustGet[string](c, key1)
+				got2 = cs.MustGet[string](c, key2)
+				a.Equal(value1, got1)
+				a.Equal(value2, got2)
+				got1 = ""
+				var err error
+				got1, err = cs.Get[string](c, key1)
+				r.NoError(err)
+				a.Equal(value1, got1)
 			},
 		},
 		"simple structs": {
@@ -77,6 +92,7 @@ func TestConfig(t *testing.T) {
 			assert: func(c cs.Config) {
 				var got1 string
 				var got2 string
+
 				// We can read individual strings
 				c.MustRead("key1.value1", &got1)
 				c.MustRead("key2.value1", &got2)
@@ -85,6 +101,22 @@ func TestConfig(t *testing.T) {
 
 				got3 := &SimpleConfig{}
 				c.MustRead(key1, got3)
+				a.Equal(&SimpleConfig{
+					Value1: "a",
+					Value2: 2,
+					Value3: true,
+				}, got3)
+
+				got1 = ""
+				got2 = ""
+
+				got1 = cs.MustGet[string](c, "key1.value1")
+				got2 = cs.MustGet[string](c, "key2.value1")
+				a.Equal("a", got1)
+				a.Equal("d", got2)
+
+				got3val := cs.MustGet[SimpleConfig](c, key1)
+				got3 = &got3val
 				a.Equal(&SimpleConfig{
 					Value1: "a",
 					Value2: 2,
@@ -176,7 +208,7 @@ func TestConfig(t *testing.T) {
 
 	for k, v := range cases {
 		t.Run(k, func(_ *testing.T) {
-			unit := cs.NewConfig()
+			unit := cs.New()
 			v.arrange(unit)
 			// Run assert twice to check for caching
 			v.assert(unit)

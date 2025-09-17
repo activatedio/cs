@@ -15,7 +15,7 @@ func TestMultipleSources(t *testing.T) {
 
 	a := assert.New(t)
 
-	unit := cs.NewConfig()
+	unit := cs.New()
 
 	unit.AddSource(yaml.NewSourceFromPath("testdata/config.yaml", "prefixA"))
 	unit.AddSource(json.NewSourceFromPath("testdata/config.json", "prefixB"))
@@ -81,16 +81,18 @@ func TestEnvironmentVariablesOnly(t *testing.T) {
 
 	a := assert.New(t)
 
-	unit := cs.NewConfig()
+	unit := cs.New()
 	unit.AddLateBindingSource(sources.NewEnvLateBindingSource("TEST"))
 
 	got := &Dummy{}
 
 	unit.MustRead("dummy", got)
 
-	a.Equal(&Dummy{
+	expected := &Dummy{
 		Value1: "value1",
 		Value2: 1234,
-	}, got)
+	}
+
+	a.Equal(expected, got)
 
 }
