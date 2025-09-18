@@ -26,6 +26,16 @@ func (c *cs) SetValidatingHook(f func(in any) error) {
 	c.validatingHook = f
 }
 
+func (c *cs) AddDefaultSource(src Source) {
+
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	// prepend
+	c.sources = append([]Source{src}, c.sources...)
+	c.dirty = true
+}
+
 func (c *cs) AddSource(src Source) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -150,7 +160,9 @@ func (c *cs) toValueFromStruct(v any) (reflect.Value, error) {
 
 	for i := 0; i < val.NumField(); i++ {
 		f := val.Field(i)
-		if f.CanInterface() {
+		// We skip this if the field is a zero value
+		// TODO - allow this behavior to be configurable by source
+		if f.CanInterface() && !f.IsZero() {
 			fv, err := c.toValue(f.Interface())
 			if err != nil {
 				return reflect.Value{}, err
