@@ -73,13 +73,15 @@ func TestConfig(t *testing.T) {
 				// test other accessors
 				got1 = ""
 				got2 = ""
-				got1 = cs.MustGet[string](c, key1)
-				got2 = cs.MustGet[string](c, key2)
+				got1 = *cs.MustGet[string](c, key1)
+				got2 = *cs.MustGet[string](c, key2)
 				a.Equal(value1, got1)
 				a.Equal(value2, got2)
 				got1 = ""
 				var err error
-				got1, err = cs.Get[string](c, key1)
+				var tmp *string
+				tmp, err = cs.Get[string](c, key1)
+				got1 = *tmp
 				r.NoError(err)
 				a.Equal(value1, got1)
 			},
@@ -122,13 +124,13 @@ func TestConfig(t *testing.T) {
 				got1 = ""
 				got2 = ""
 
-				got1 = cs.MustGet[string](c, "key1.value1")
-				got2 = cs.MustGet[string](c, "key2.value1")
+				got1 = *cs.MustGet[string](c, "key1.value1")
+				got2 = *cs.MustGet[string](c, "key2.value1")
 				a.Equal("a", got1)
 				a.Equal("d", got2)
 
 				got3val := cs.MustGet[SimpleConfig](c, key1)
-				got3 = &got3val
+				got3 = got3val
 				a.Equal(&SimpleConfig{
 					Value1: "a",
 					Value2: 2,
