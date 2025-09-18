@@ -15,8 +15,11 @@ type LateBindingSource func(key string) (any, error)
 // Config is main interface for cs data.  Keys are in dot format, `prefix.name`
 type Config interface {
 
+	// AddDefaultSource adds a source that provides default configuration values, used as a fallback if no other source provides a value.
+	AddDefaultSource(src Source)
+
 	// AddSource adds a source to build the root cs object. Sources are invoked in the order they are added.
-	// Sources added later take predecent over sources added earlier
+	// Sources added later take precedent over sources added earlier
 	AddSource(src Source)
 
 	// AddLateBindingSource adds a source which is consulted at read time, meaning each property present on the

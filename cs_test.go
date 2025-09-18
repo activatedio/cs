@@ -139,6 +139,30 @@ func TestConfig(t *testing.T) {
 
 			},
 		},
+		"default source": {
+			arrange: func(c cs.Config) {
+				c.AddSource(func() (string, any, error) {
+					return key1, &SimpleConfig{
+						Value2: 2,
+						Value3: true,
+					}, nil
+				})
+				c.AddDefaultSource(func() (string, any, error) {
+					return key1, &SimpleConfig{
+						Value1: "a",
+						Value2: 1,
+						Value3: false,
+					}, nil
+				})
+			},
+			assert: func(c cs.Config) {
+				a.Equal(&SimpleConfig{
+					Value1: "a",
+					Value2: 2,
+					Value3: true,
+				}, cs.MustGet[SimpleConfig](c, key1))
+			},
+		},
 		"validating struct - pass": {
 			arrange: func(c cs.Config) {
 				c.AddSource(func() (string, any, error) {

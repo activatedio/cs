@@ -23,8 +23,13 @@ func Global() Config {
 	return global
 }
 
+// AddDefaultSource adds a source of default configuration values to the global configuration instance.
+func AddDefaultSource(src Source) {
+	Global().AddDefaultSource(src)
+}
+
 // AddSource adds a source to build the root cs object. Sources are invoked in the order they are added.
-// Sources added later take predecent over sources added earlier
+// Sources added later take precedent over sources added earlier
 func AddSource(src Source) {
 	Global().AddSource(src)
 }
