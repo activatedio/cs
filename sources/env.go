@@ -13,12 +13,12 @@ import (
 var matchFirstCap = regexp.MustCompile("(.)([A-Z][a-z]+)")
 var matchAllCap = regexp.MustCompile("([a-z0-9])([A-Z])")
 
-// NewEnvLateBindingSource creates a cs.LateBindingSource which reads from environment variables
+// FromEnvironment creates a cs.LateBindingSource which reads from environment variables
 //
 // Dot-separated lower camel case keys are converted into upper snake case for lookup.
 //
 // If non-empty envPrefix is provided, it will be prepended to the key in format [envPrefix]_[key]
-func NewEnvLateBindingSource(envPrefix string) cs.LateBindingSource {
+func FromEnvironment(envPrefix string) cs.LateBindingSource {
 	return func(key string) (any, error) {
 
 		snake := matchFirstCap.ReplaceAllString(key, "${1}_${2}")
