@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -130,6 +132,8 @@ func (c *cs) toValue(v any) (reflect.Value, error) {
 		return c.toValueFromMap(v)
 	case reflect.Struct:
 		return c.toValueFromStruct(v)
+	case reflect.Slice:
+		return c.toValueFromSlice(v)
 	default:
 		return reflect.ValueOf(nil), fmt.Errorf("unsupported kind %s", typ.Kind().String())
 	}
@@ -169,6 +173,22 @@ func (c *cs) toValueFromStruct(v any) (reflect.Value, error) {
 			}
 			res[toLowerCamel(val.Type().Field(i).Name)] = fv
 		}
+	}
+
+	return reflect.ValueOf(res), nil
+}
+
+func (c *cs) toValueFromSlice(v any) (reflect.Value, error) {
+	var res []reflect.Value
+	val := reflect.ValueOf(v)
+
+	for i := 0; i < val.Len(); i++ {
+		_v := val.Index(i).Interface()
+		fv, err := c.toValue(_v)
+		if err != nil {
+			return reflect.Value{}, err
+		}
+		res = append(res, fv)
 	}
 
 	return reflect.ValueOf(res), nil
@@ -219,6 +239,9 @@ func (c *cs) populateValue(fullKey string, dest reflect.Value, val reflect.Value
 	case reflect.Struct:
 		// We need to be able to write to the struct
 		return c.populateStruct(fullKey, dest, val)
+	case reflect.Slice:
+		// We need to be able to write to the struct
+		return c.populateSlice(fullKey, dest, val)
 	default:
 		return fmt.Errorf("unsupported destination kind %s", dest.Kind().String())
 	}
@@ -355,6 +378,34 @@ func (c *cs) populateStruct(fullKey string, dest reflect.Value, val reflect.Valu
 	return nil
 }
 
+func (c *cs) populateSlice(fullKey string, dest reflect.Value, val reflect.Value) error {
+
+	// type must be []reflect.Value
+	if val.Kind() != reflect.Slice {
+		// Value is not a slice, can't do anything
+		return nil
+	}
+
+	if vals, valsOk := val.Interface().([]reflect.Value); valsOk {
+		for i, _val := range vals {
+
+			v := reflect.New(dest.Type().Elem()).Elem()
+			err := c.populateValue(fmt.Sprintf("%s[%d]", fullKey, i), v, _val)
+			if err != nil {
+				return err
+			}
+
+			dest.Set(reflect.Append(dest, v))
+		}
+
+	} else {
+		// Can't do anything, return nil
+		return nil
+	}
+
+	return nil
+}
+
 func (c *cs) replaceOrMergeValues(existing reflect.Value, value reflect.Value) (reflect.Value, error) {
 
 	switch existing.Kind() {
@@ -418,6 +469,10 @@ func (c *cs) withCleanData(callback func() error) error {
 
 }
 
+var (
+	indexedKeyPattern = regexp.MustCompile(`^(\w+)\[([0-9]+)]$`)
+)
+
 func (c *cs) read(fullKey, key string, data map[string]reflect.Value, into any) error {
 	parts := strings.SplitN(key, ".", 2)
 	thisKey := parts[0]
@@ -425,7 +480,16 @@ func (c *cs) read(fullKey, key string, data map[string]reflect.Value, into any) 
 		// Special case for root of the cs
 		return c.fromValue("", reflect.ValueOf(c.root), into)
 	}
+	i := -1
+	if matches := indexedKeyPattern.FindAllStringSubmatch(thisKey, -1); matches != nil {
+		i, _ = strconv.Atoi(matches[0][2])
+		thisKey = matches[0][1]
+	}
 	if tmp, ok := data[thisKey]; ok {
+		if i >= 0 {
+			// This doesn't seem right but it seems to work
+			tmp = tmp.Index(i).Interface().(reflect.Value)
+		}
 		if len(parts) == 1 {
 			return c.fromValue(fullKey, tmp, into)
 		} else if data, ok = tmp.Interface().(map[string]reflect.Value); ok {

@@ -15,6 +15,13 @@ type SimpleConfig struct {
 	Value3 bool
 }
 
+type ComplexConfig struct {
+	Value1 []string
+	Value2 []int
+	Value3 []bool
+	Value4 []ComplexConfig
+}
+
 type Validating struct {
 	Value1 string
 }
@@ -137,6 +144,56 @@ func TestConfig(t *testing.T) {
 					Value3: true,
 				}, got3)
 
+			},
+		},
+		"complex structs": {
+			arrange: func(c cs.Config) {
+				c.AddSource(func() (string, any, error) {
+					return key1, &ComplexConfig{
+						Value1: []string{"a", "b", "c"},
+						Value2: []int{2, 3, 4},
+						Value3: []bool{true, false, true},
+						Value4: []ComplexConfig{
+							{
+								Value1: []string{"d", "e", "f"},
+							},
+							{
+								Value1: []string{"g", "h", "i"},
+							},
+						},
+					}, nil
+				})
+			},
+			assert: func(c cs.Config) {
+				var got1 []string
+
+				// We can read individual strings
+				c.MustRead("key1.value1", &got1)
+				a.Equal([]string{"a", "b", "c"}, got1)
+
+				got2 := &ComplexConfig{}
+				c.MustRead(key1, got2)
+				a.Equal(&ComplexConfig{
+					Value1: []string{"a", "b", "c"},
+					Value2: []int{2, 3, 4},
+					Value3: []bool{true, false, true},
+					Value4: []ComplexConfig{
+						{
+							Value1: []string{"d", "e", "f"},
+						},
+						{
+							Value1: []string{"g", "h", "i"},
+						},
+					},
+				}, got2)
+
+				var got3 string
+
+				// We can read individual strings
+				c.MustRead("key1.value1[1]", &got3)
+				a.Equal("b", got3)
+				c.MustRead("key1.value4[1].value1[1]", &got3)
+				a.Equal("h", got3)
 			},
 		},
 		"default source": {
