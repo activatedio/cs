@@ -12,11 +12,15 @@ import (
 	"github.com/spf13/cast"
 )
 
+type node struct {
+	value reflect.Value
+}
+
 type cs struct {
 	sources            []Source
 	lateBindingSources []LateBindingSource
 	dirty              bool
-	root               map[string]reflect.Value
+	root               map[string]node
 	lock               sync.RWMutex
 	validatingHook     func(in any) error
 }
@@ -59,25 +63,25 @@ func (c *cs) loadData() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	c.root = make(map[string]reflect.Value)
+	c.root = make(map[string]node)
 
 	for _, src := range c.sources {
 		key, v, err := src()
 		if err != nil {
 			return err
 		}
-		var val reflect.Value
-		val, err = c.toValue(v)
+		var n node
+		n, err = c.toNode(v)
 		if err != nil {
 			return err
 		}
-		var tmp map[string]reflect.Value
-		tmp, err = c.toValueMap(key, val)
+		var tmp map[string]node
+		tmp, err = c.toNodeMap(key, n)
 		if err != nil {
 			return err
 		}
 		// We ignore return as maps are never replaced
-		_, err = c.replaceOrMergeValues(reflect.ValueOf(c.root), reflect.ValueOf(tmp))
+		_, err = c.replaceOrMerge(node{value: reflect.ValueOf(c.root)}, node{value: reflect.ValueOf(tmp)})
 		if err != nil {
 			return err
 		}
@@ -88,32 +92,32 @@ func (c *cs) loadData() error {
 	return nil
 }
 
-func (c *cs) toValueMap(key string, v reflect.Value) (map[string]reflect.Value, error) {
+func (c *cs) toNodeMap(key string, n node) (map[string]node, error) {
 
 	if key == "" {
-		if val, ok := v.Interface().(map[string]reflect.Value); ok {
+		if val, ok := n.value.Interface().(map[string]node); ok {
 			return val, nil
 		}
 		return nil, errors.New("invalid root type")
 	}
 	// Build out a map structure
-	val := map[string]reflect.Value{}
+	val := map[string]node{}
 	parts := strings.SplitN(key, ".", 2)
 	thisKey := parts[0]
 	if len(parts) == 1 {
-		val[thisKey] = v
+		val[thisKey] = n
 	} else {
 		rest := parts[1]
-		tmp, err := c.toValueMap(rest, v)
+		tmp, err := c.toNodeMap(rest, n)
 		if err != nil {
 			return nil, err
 		}
-		val[thisKey] = reflect.ValueOf(tmp)
+		val[thisKey] = node{value: reflect.ValueOf(tmp)}
 	}
 	return val, nil
 }
 
-func (c *cs) toValue(v any) (reflect.Value, error) {
+func (c *cs) toNode(v any) (node, error) {
 	typ := reflect.TypeOf(v)
 
 	if typ.Kind() == reflect.Ptr {
@@ -127,39 +131,39 @@ func (c *cs) toValue(v any) (reflect.Value, error) {
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
 		reflect.Float32, reflect.Float64,
 		reflect.Bool:
-		return reflect.ValueOf(v), nil
+		return node{value: reflect.ValueOf(v)}, nil
 	case reflect.Map:
-		return c.toValueFromMap(v)
+		return c.toNodeFromMap(v)
 	case reflect.Struct:
-		return c.toValueFromStruct(v)
+		return c.toNodeFromStruct(v)
 	case reflect.Slice:
-		return c.toValueFromSlice(v)
+		return c.toNodeFromSlice(v)
 	default:
-		return reflect.ValueOf(nil), fmt.Errorf("unsupported kind %s", typ.Kind().String())
+		return node{}, fmt.Errorf("unsupported kind %s", typ.Kind().String())
 	}
 }
 
-func (c *cs) toValueFromMap(v any) (reflect.Value, error) {
+func (c *cs) toNodeFromMap(v any) (node, error) {
 	// We assume this is a struct and convert this to a map of values
-	res := map[string]reflect.Value{}
+	res := map[string]node{}
 	if val, ok := v.(map[string]any); ok {
 		for k, _v := range val {
-			fv, err := c.toValue(_v)
+			fv, err := c.toNode(_v)
 			if err != nil {
-				return reflect.Value{}, err
+				return node{}, err
 			}
 			res[k] = fv
 		}
 	} else {
-		return reflect.ValueOf(nil), errors.New("map must be of type map[string]any")
+		return node{}, errors.New("map must be of type map[string]any")
 	}
 
-	return reflect.ValueOf(res), nil
+	return node{value: reflect.ValueOf(res)}, nil
 }
 
-func (c *cs) toValueFromStruct(v any) (reflect.Value, error) {
+func (c *cs) toNodeFromStruct(v any) (node, error) {
 	// We assume this is a struct and convert this to a map of values
-	res := map[string]reflect.Value{}
+	res := map[string]node{}
 	val := reflect.ValueOf(v)
 
 	for i := 0; i < val.NumField(); i++ {
@@ -167,46 +171,46 @@ func (c *cs) toValueFromStruct(v any) (reflect.Value, error) {
 		// We skip this if the field is a zero value
 		// TODO - allow this behavior to be configurable by source
 		if f.CanInterface() && !f.IsZero() {
-			fv, err := c.toValue(f.Interface())
+			fv, err := c.toNode(f.Interface())
 			if err != nil {
-				return reflect.Value{}, err
+				return node{}, err
 			}
 			res[toLowerCamel(val.Type().Field(i).Name)] = fv
 		}
 	}
 
-	return reflect.ValueOf(res), nil
+	return node{value: reflect.ValueOf(res)}, nil
 }
 
-func (c *cs) toValueFromSlice(v any) (reflect.Value, error) {
-	var res []reflect.Value
+func (c *cs) toNodeFromSlice(v any) (node, error) {
+	var res []node
 	val := reflect.ValueOf(v)
 
 	for i := 0; i < val.Len(); i++ {
 		_v := val.Index(i).Interface()
-		fv, err := c.toValue(_v)
+		fv, err := c.toNode(_v)
 		if err != nil {
-			return reflect.Value{}, err
+			return node{}, err
 		}
 		res = append(res, fv)
 	}
 
-	return reflect.ValueOf(res), nil
+	return node{value: reflect.ValueOf(res)}, nil
 }
 
-func (c *cs) fromValue(fullKey string, val reflect.Value, into any) error {
+func (c *cs) fromNode(fullKey string, n node, into any) error {
 	dest := reflect.ValueOf(into)
 	if dest.Kind() == reflect.Ptr {
 		dest = dest.Elem()
 	}
-	err := c.populateValue(fullKey, dest, val)
+	err := c.populateDestinationValue(fullKey, dest, n)
 	if err != nil {
 		return err
 	}
 	return c.validatingHook(into)
 }
 
-func (c *cs) populateValue(fullKey string, dest reflect.Value, val reflect.Value) error {
+func (c *cs) populateDestinationValue(fullKey string, dest reflect.Value, n node) error {
 	switch dest.Kind() {
 	case reflect.String, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
@@ -219,15 +223,15 @@ func (c *cs) populateValue(fullKey string, dest reflect.Value, val reflect.Value
 				return err
 			}
 			if lbVal != nil {
-				val = reflect.ValueOf(lbVal)
+				n = node{value: reflect.ValueOf(lbVal)}
 			}
 		}
 
 		// This skips the set in case of a zero value
-		if val.IsValid() {
+		if n.value.IsValid() {
 			// Need some type conversions, especially given some of the late binding sources will be strings from
 			// environment variables
-			err := c.castAndSet(dest, val)
+			err := c.castAndSet(dest, n.value)
 			if err != nil {
 				return err
 			}
@@ -235,13 +239,13 @@ func (c *cs) populateValue(fullKey string, dest reflect.Value, val reflect.Value
 		return nil
 	case reflect.Map:
 		// We need to be able to write to the struct
-		return c.populateMap(fullKey, dest, val)
+		return c.populateMap(fullKey, dest, n)
 	case reflect.Struct:
 		// We need to be able to write to the struct
-		return c.populateStruct(fullKey, dest, val)
+		return c.populateStruct(fullKey, dest, n)
 	case reflect.Slice:
 		// We need to be able to write to the struct
-		return c.populateSlice(fullKey, dest, val)
+		return c.populateSlice(fullKey, dest, n)
 	default:
 		return fmt.Errorf("unsupported destination kind %s", dest.Kind().String())
 	}
@@ -294,10 +298,12 @@ func (c *cs) castAndSet(dest, src reflect.Value) error { //nolint:gocyclo // swi
 	return nil
 }
 
-var typeMapStringReflectValue = reflect.TypeFor[map[string]reflect.Value]()
+var typeMapStringNode = reflect.TypeFor[map[string]node]()
 var typeMapStringAny = reflect.TypeFor[map[string]any]()
 
-func (c *cs) populateMap(fullKey string, dest reflect.Value, val reflect.Value) error {
+func (c *cs) populateMap(fullKey string, dest reflect.Value, n node) error {
+
+	val := n.value
 
 	// type must be map[string]reflect.Value
 	if val.Kind() != reflect.Map {
@@ -308,8 +314,8 @@ func (c *cs) populateMap(fullKey string, dest reflect.Value, val reflect.Value) 
 	vInt := val.Interface()
 	dInt := dest.Interface()
 
-	if _, ok := vInt.(map[string]reflect.Value); !ok {
-		return errors.New("invalid internal map type. must be map[string]reflect.Value")
+	if _, ok := vInt.(map[string]node); !ok {
+		return errors.New("invalid internal map type. must be map[string]node")
 	}
 
 	if _, ok := dInt.(map[string]any); !ok {
@@ -324,22 +330,22 @@ func (c *cs) populateMap(fullKey string, dest reflect.Value, val reflect.Value) 
 		} else {
 			_fullKey = fmt.Sprintf("%s.%s", fullKey, toLowerCamel(key.String()))
 		}
-		_val := val.MapIndex(key)
+		_n := val.MapIndex(key).Interface().(node)
 		if exist.IsValid() {
-			err := c.populateValue(_fullKey, exist, _val)
+			err := c.populateDestinationValue(_fullKey, exist, _n)
 			if err != nil {
 				return err
 			}
 		} else {
-			tmp := _val.Interface().(reflect.Value)
+			tmp := _n.value
 			_type := tmp.Type()
 			var _dest reflect.Value
-			if _type == typeMapStringReflectValue {
+			if _type == typeMapStringNode {
 				_dest = reflect.MakeMap(typeMapStringAny)
 			} else {
 				_dest = reflect.New(_type).Elem()
 			}
-			err := c.populateValue(_fullKey, _dest, tmp)
+			err := c.populateDestinationValue(_fullKey, _dest, _n)
 			if err != nil {
 				return err
 			}
@@ -349,23 +355,23 @@ func (c *cs) populateMap(fullKey string, dest reflect.Value, val reflect.Value) 
 	return nil
 }
 
-func (c *cs) populateStruct(fullKey string, dest reflect.Value, val reflect.Value) error {
+func (c *cs) populateStruct(fullKey string, dest reflect.Value, n node) error {
 
 	// type must be map[string]reflect.Value
-	if val.Kind() != reflect.Map {
+	if n.value.Kind() != reflect.Map {
 		// Value is not a map, can't do anything
 		return nil
 	}
 
 	// TODO - consider keys which are not present in the map
 
-	if valMap, valMapOk := val.Interface().(map[string]reflect.Value); valMapOk {
+	if valMap, valMapOk := n.value.Interface().(map[string]node); valMapOk {
 
 		for i := 0; i < dest.NumField(); i++ {
 			f := dest.Field(i)
 			name := toLowerCamel(dest.Type().Field(i).Name)
 			v := valMap[name]
-			err := c.populateValue(fmt.Sprintf("%s.%s", fullKey, name), f, v)
+			err := c.populateDestinationValue(fmt.Sprintf("%s.%s", fullKey, name), f, v)
 			if err != nil {
 				return err
 			}
@@ -378,19 +384,19 @@ func (c *cs) populateStruct(fullKey string, dest reflect.Value, val reflect.Valu
 	return nil
 }
 
-func (c *cs) populateSlice(fullKey string, dest reflect.Value, val reflect.Value) error {
+func (c *cs) populateSlice(fullKey string, dest reflect.Value, n node) error {
 
 	// type must be []reflect.Value
-	if val.Kind() != reflect.Slice {
+	if n.value.Kind() != reflect.Slice {
 		// Value is not a slice, can't do anything
 		return nil
 	}
 
-	if vals, valsOk := val.Interface().([]reflect.Value); valsOk {
+	if vals, valsOk := n.value.Interface().([]node); valsOk {
 		for i, _val := range vals {
 
 			v := reflect.New(dest.Type().Elem()).Elem()
-			err := c.populateValue(fmt.Sprintf("%s[%d]", fullKey, i), v, _val)
+			err := c.populateDestinationValue(fmt.Sprintf("%s[%d]", fullKey, i), v, _val)
 			if err != nil {
 				return err
 			}
@@ -406,43 +412,43 @@ func (c *cs) populateSlice(fullKey string, dest reflect.Value, val reflect.Value
 	return nil
 }
 
-func (c *cs) replaceOrMergeValues(existing reflect.Value, value reflect.Value) (reflect.Value, error) {
+func (c *cs) replaceOrMerge(existing node, in node) (node, error) {
 
-	switch existing.Kind() {
+	switch existing.value.Kind() {
 	case reflect.String, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
 		reflect.Float32, reflect.Float64,
 		reflect.Bool:
-		if value.Kind() == reflect.Map {
-			return reflect.Value{}, fmt.Errorf("cannot overrwrite type %s with a map", existing.Kind().String())
+		if in.value.Kind() == reflect.Map {
+			return node{}, fmt.Errorf("cannot overrwrite type %s with a map", existing.value.Kind().String())
 		}
-		return value, nil
+		return in, nil
 	case reflect.Map:
-		if value.Kind() != reflect.Map {
-			return reflect.Value{}, fmt.Errorf("invalid value for map target %s", value.Kind().String())
+		if in.value.Kind() != reflect.Map {
+			return node{}, fmt.Errorf("invalid value for map target %s", in.value.Kind().String())
 		}
 		// New must also be the same type
-		if eMap, eOk := existing.Interface().(map[string]reflect.Value); eOk {
-			if nMap, nOk := value.Interface().(map[string]reflect.Value); nOk {
+		if eMap, eOk := existing.value.Interface().(map[string]node); eOk {
+			if nMap, nOk := in.value.Interface().(map[string]node); nOk {
 				for k, v := range nMap {
 					if el, elOk := eMap[k]; elOk {
 						// map contains value, we merge
 						var err error
-						v, err = c.replaceOrMergeValues(el, v)
+						v, err = c.replaceOrMerge(el, v)
 						if err != nil {
-							return reflect.Value{}, err
+							return node{}, err
 						}
 					}
 					eMap[k] = v
 				}
 			} else {
-				return reflect.Value{}, errors.New("new is unexpectedly not a map[string]reflect.Value")
+				return node{}, errors.New("new is unexpectedly not a map[string]node")
 			}
 			return existing, nil
 		}
-		return reflect.Value{}, errors.New("destination is unexpectedly not a map[string]reflect.Value")
+		return node{}, errors.New("destination is unexpectedly not a map[string]node")
 	default:
-		return reflect.Value{}, fmt.Errorf("unsupported existing kind %s", existing.Kind().String())
+		return node{}, fmt.Errorf("unsupported existing kind %s", existing.value.Kind().String())
 	}
 }
 
@@ -473,12 +479,12 @@ var (
 	indexedKeyPattern = regexp.MustCompile(`^(\w+)\[([0-9]+)]$`)
 )
 
-func (c *cs) read(fullKey, key string, data map[string]reflect.Value, into any) error {
+func (c *cs) read(fullKey, key string, data map[string]node, into any) error {
 	parts := strings.SplitN(key, ".", 2)
 	thisKey := parts[0]
 	if thisKey == "" {
 		// Special case for root of the cs
-		return c.fromValue("", reflect.ValueOf(c.root), into)
+		return c.fromNode("", node{value: reflect.ValueOf(c.root)}, into)
 	}
 	i := -1
 	if matches := indexedKeyPattern.FindAllStringSubmatch(thisKey, -1); matches != nil {
@@ -488,17 +494,17 @@ func (c *cs) read(fullKey, key string, data map[string]reflect.Value, into any) 
 	if tmp, ok := data[thisKey]; ok {
 		if i >= 0 {
 			// This doesn't seem right but it seems to work
-			tmp = tmp.Index(i).Interface().(reflect.Value)
+			tmp = tmp.value.Index(i).Interface().(node)
 		}
 		if len(parts) == 1 {
-			return c.fromValue(fullKey, tmp, into)
-		} else if data, ok = tmp.Interface().(map[string]reflect.Value); ok {
+			return c.fromNode(fullKey, tmp, into)
+		} else if data, ok = tmp.value.Interface().(map[string]node); ok {
 			return c.read(fullKey, parts[1], data, into)
 		}
 		return fmt.Errorf("invalid type for key %s", thisKey)
 	}
 	// We still populate the value in the case it is a struct and we can lookup keys based on fields
-	return c.fromValue(fullKey, reflect.New(typeMapStringReflectValue).Elem(), into)
+	return c.fromNode(fullKey, node{value: reflect.New(typeMapStringNode).Elem()}, into)
 }
 
 func (c *cs) Read(key string, into any) error {
@@ -522,7 +528,7 @@ func (c *cs) MustRead(key string, into any) {
 
 func newConfig() Config {
 	return &cs{
-		root: map[string]reflect.Value{},
+		root: map[string]node{},
 		validatingHook: func(in any) error {
 			if v, ok := in.(Validating); ok {
 				return v.Validate()
