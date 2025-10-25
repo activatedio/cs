@@ -17,38 +17,6 @@ type cachedConfig struct {
 	lock              sync.RWMutex
 }
 
-func (c *cachedConfig) GetDescriptions(key string) (map[string]any, error) {
-
-	c.lock.RLock()
-
-	if res, ok := c.descriptionsCache[key]; ok {
-		defer c.lock.RUnlock()
-		return res, nil
-	}
-
-	c.lock.RUnlock()
-
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
-	res, err := c.delegate.GetDescriptions(key)
-	if err != nil {
-		return nil, err
-	}
-
-	c.descriptionsCache[key] = res
-
-	return res, nil
-}
-
-func (c *cachedConfig) MustGetDescriptions(key string) map[string]any {
-	res, err := c.GetDescriptions(key)
-	if err != nil {
-		panic(err)
-	}
-	return res
-}
-
 func (c *cachedConfig) AddDefaultSource(src Source) {
 	c.delegate.AddDefaultSource(src)
 }
