@@ -36,6 +36,41 @@ func (v *Validating) Validate() error {
 	return nil
 }
 
+var (
+	key1    = "key1"
+	key2    = "key2"
+	value1  = "value1"
+	value2  = "value2"
+	simple1 = &SimpleConfig{
+		Value1: "a",
+		Value2: 2,
+		Value3: true,
+	}
+	simple2 = &SimpleConfig{
+		Value1: "d",
+		Value2: 3,
+		Value3: false,
+	}
+	complex1 = &ComplexConfig{
+		Value0: "0",
+		Value1: []string{"a", "b", "c"},
+		Value2: []int{2, 3, 4},
+		Value3: []bool{true, false, true},
+		Value4: &ComplexConfig{
+			Value1: []string{"x", "y", "z"},
+			Value2: []int{99, 100, 101},
+		},
+		Value5: []ComplexConfig{
+			{
+				Value1: []string{"d", "e", "f"},
+			},
+			{
+				Value1: []string{"g", "h", "i"},
+			},
+		},
+	}
+)
+
 func TestConfig_WriteRead(t *testing.T) {
 
 	a := assert.New(t)
@@ -46,10 +81,6 @@ func TestConfig_WriteRead(t *testing.T) {
 		assert  func(c cs.Config)
 	}
 
-	const key1 = "key1"
-	const key2 = "key2"
-	const value1 = "value1"
-	const value2 = "value2"
 	cases := map[string]s{
 		"empty": {
 			arrange: func(_ cs.Config) {
@@ -99,18 +130,10 @@ func TestConfig_WriteRead(t *testing.T) {
 		"simple structs": {
 			arrange: func(c cs.Config) {
 				c.AddSource(func() (string, any, error) {
-					return key1, &SimpleConfig{
-						Value1: "a",
-						Value2: 2,
-						Value3: true,
-					}, nil
+					return key1, simple1, nil
 				})
 				c.AddSource(func() (string, any, error) {
-					return key2, &SimpleConfig{
-						Value1: "d",
-						Value2: 3,
-						Value3: false,
-					}, nil
+					return key2, simple2, nil
 				})
 			},
 			assert: func(c cs.Config) {
@@ -152,24 +175,7 @@ func TestConfig_WriteRead(t *testing.T) {
 		"complex structs": {
 			arrange: func(c cs.Config) {
 				c.AddSource(func() (string, any, error) {
-					return key1, &ComplexConfig{
-						Value0: "0",
-						Value1: []string{"a", "b", "c"},
-						Value2: []int{2, 3, 4},
-						Value3: []bool{true, false, true},
-						Value4: &ComplexConfig{
-							Value1: []string{"x", "y", "z"},
-							Value2: []int{99, 100, 101},
-						},
-						Value5: []ComplexConfig{
-							{
-								Value1: []string{"d", "e", "f"},
-							},
-							{
-								Value1: []string{"g", "h", "i"},
-							},
-						},
-					}, nil
+					return key1, complex1, nil
 				})
 			},
 			assert: func(c cs.Config) {
@@ -237,16 +243,6 @@ func TestConfig_WriteRead(t *testing.T) {
 				mapRes1 = *cs.MustGet[map[string]any](c, "")
 				a.Equal(mapRef1, mapRes1)
 
-				/*
-
-				 */
-
-				// Assert descriptions descriptions
-				/*
-					descs := c.MustGetDescriptions("")
-					a.Equal(map[string]any{}, descs)
-
-				*/
 			},
 		},
 		"default source": {

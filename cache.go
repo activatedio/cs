@@ -17,6 +17,10 @@ type cachedConfig struct {
 	lock              sync.RWMutex
 }
 
+func (c *cachedConfig) Dump(opts ...DumpOption) error {
+	return c.delegate.Dump(opts...)
+}
+
 func (c *cachedConfig) AddDefaultSource(src Source) {
 	c.delegate.AddDefaultSource(src)
 }

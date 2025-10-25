@@ -36,6 +36,10 @@ type Config interface {
 	// SetValidatingHook sets a custom hook for validation. By default the struct is checked to implement Validating and
 	// if so the method is invoked
 	SetValidatingHook(func(in any) error)
+
+	// Dump dumps out the config and metadata
+	// Default dumps to stdout with descriptions and values
+	Dump(opts ...DumpOption) error
 }
 
 // Validating marks a struct with the ability to validate itself after being unmarshalled
