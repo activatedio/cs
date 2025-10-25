@@ -42,3 +42,14 @@ type Config interface {
 type Validating interface {
 	Validate() error
 }
+
+const (
+	// DescriptionKey is a reserved key for a map source to provide a metadata description
+	DescriptionKey = "_description"
+	// DescriptionTagName name of the description tag
+	DescriptionTagName = "description"
+)
+
+// Entry allows for a description to be applied via a tag to this struct
+type Entry struct {
+}

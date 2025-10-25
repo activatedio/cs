@@ -12,8 +12,18 @@ import (
 	"github.com/spf13/cast"
 )
 
+var (
+	typeEntry         = reflect.TypeFor[Entry]()
+	typeMapStringNode = reflect.TypeFor[map[string]node]()
+	typeArrayNode     = reflect.TypeFor[[]node]()
+	typeMapStringAny  = reflect.TypeFor[map[string]any]()
+)
+
 type node struct {
-	value reflect.Value
+	description string
+	// for arrays which need a type
+	sliceType reflect.Type
+	value     reflect.Value
 }
 
 type cs struct {
@@ -71,7 +81,7 @@ func (c *cs) loadData() error {
 			return err
 		}
 		var n node
-		n, err = c.toNode(v)
+		n, err = c.toNode(v, "")
 		if err != nil {
 			return err
 		}
@@ -117,7 +127,7 @@ func (c *cs) toNodeMap(key string, n node) (map[string]node, error) {
 	return val, nil
 }
 
-func (c *cs) toNode(v any) (node, error) {
+func (c *cs) toNode(v any, desc string) (node, error) {
 	typ := reflect.TypeOf(v)
 
 	if typ.Kind() == reflect.Ptr {
@@ -131,24 +141,35 @@ func (c *cs) toNode(v any) (node, error) {
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
 		reflect.Float32, reflect.Float64,
 		reflect.Bool:
-		return node{value: reflect.ValueOf(v)}, nil
+		return node{
+			description: desc,
+			value:       reflect.ValueOf(v),
+		}, nil
 	case reflect.Map:
-		return c.toNodeFromMap(v)
+		return c.toNodeFromMap(v, desc)
 	case reflect.Struct:
-		return c.toNodeFromStruct(v)
+		return c.toNodeFromStruct(v, desc)
 	case reflect.Slice:
-		return c.toNodeFromSlice(v)
+		return c.toNodeFromSlice(v, desc)
 	default:
 		return node{}, fmt.Errorf("unsupported kind %s", typ.Kind().String())
 	}
 }
 
-func (c *cs) toNodeFromMap(v any) (node, error) {
+func (c *cs) toNodeFromMap(v any, desc string) (node, error) {
 	// We assume this is a struct and convert this to a map of values
 	res := map[string]node{}
 	if val, ok := v.(map[string]any); ok {
 		for k, _v := range val {
-			fv, err := c.toNode(_v)
+			if k == DescriptionKey {
+				if desc == "" {
+					if _desc, _ok := _v.(string); _ok {
+						desc = _desc
+					}
+				}
+				continue
+			}
+			fv, err := c.toNode(_v, "")
 			if err != nil {
 				return node{}, err
 			}
@@ -158,10 +179,13 @@ func (c *cs) toNodeFromMap(v any) (node, error) {
 		return node{}, errors.New("map must be of type map[string]any")
 	}
 
-	return node{value: reflect.ValueOf(res)}, nil
+	return node{
+		description: desc,
+		value:       reflect.ValueOf(res),
+	}, nil
 }
 
-func (c *cs) toNodeFromStruct(v any) (node, error) {
+func (c *cs) toNodeFromStruct(v any, desc string) (node, error) {
 	// We assume this is a struct and convert this to a map of values
 	res := map[string]node{}
 	val := reflect.ValueOf(v)
@@ -170,8 +194,11 @@ func (c *cs) toNodeFromStruct(v any) (node, error) {
 		f := val.Field(i)
 		// We skip this if the field is a zero value
 		// TODO - allow this behavior to be configurable by source
-		if f.CanInterface() && !f.IsZero() {
-			fv, err := c.toNode(f.Interface())
+		ft := val.Type().Field(i)
+		if ft.Type == typeEntry && desc == "" {
+			desc = descriptionFromTag(ft.Tag)
+		} else if f.CanInterface() && !f.IsZero() {
+			fv, err := c.toNode(f.Interface(), descriptionFromTag(ft.Tag))
 			if err != nil {
 				return node{}, err
 			}
@@ -179,23 +206,48 @@ func (c *cs) toNodeFromStruct(v any) (node, error) {
 		}
 	}
 
-	return node{value: reflect.ValueOf(res)}, nil
+	return node{
+		description: desc,
+		value:       reflect.ValueOf(res),
+	}, nil
 }
 
-func (c *cs) toNodeFromSlice(v any) (node, error) {
+func descriptionFromTag(tag reflect.StructTag) string {
+	if desc, ok := tag.Lookup(DescriptionTagName); ok {
+		return desc
+	}
+	return ""
+}
+
+func (c *cs) toNodeFromSlice(v any, desc string) (node, error) {
 	var res []node
 	val := reflect.ValueOf(v)
+	t := reflect.TypeOf(v)
 
 	for i := 0; i < val.Len(); i++ {
 		_v := val.Index(i).Interface()
-		fv, err := c.toNode(_v)
+		fv, err := c.toNode(_v, "")
 		if err != nil {
 			return node{}, err
 		}
 		res = append(res, fv)
 	}
 
-	return node{value: reflect.ValueOf(res)}, nil
+	// We translate the slice type two ways, if the underlying eleement type is a pointer, we use its element, if
+	// the underlying type is astruct, we use the type of a mapAny
+	ut := t.Elem()
+	if ut.Kind() == reflect.Ptr {
+		ut = ut.Elem()
+	}
+	if ut.Kind() == reflect.Struct {
+		ut = typeMapStringAny
+	}
+
+	return node{
+		description: desc,
+		sliceType:   reflect.SliceOf(ut),
+		value:       reflect.ValueOf(res),
+	}, nil
 }
 
 func (c *cs) fromNode(fullKey string, n node, into any) error {
@@ -212,6 +264,8 @@ func (c *cs) fromNode(fullKey string, n node, into any) error {
 
 func (c *cs) populateDestinationValue(fullKey string, dest reflect.Value, n node) error {
 	switch dest.Kind() {
+	case reflect.Ptr:
+		return c.populateDestinationPtr(fullKey, dest, n)
 	case reflect.String, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
 		reflect.Float32, reflect.Float64,
@@ -298,8 +352,20 @@ func (c *cs) castAndSet(dest, src reflect.Value) error { //nolint:gocyclo // swi
 	return nil
 }
 
-var typeMapStringNode = reflect.TypeFor[map[string]node]()
-var typeMapStringAny = reflect.TypeFor[map[string]any]()
+func (c *cs) populateDestinationPtr(key string, dest reflect.Value, n node) error {
+
+	// dest is always aptr
+
+	if !n.value.IsValid() {
+		return nil
+	}
+
+	if dest.IsNil() {
+		dest.Set(reflect.New(dest.Type().Elem()))
+	}
+
+	return c.populateDestinationValue(key, dest.Elem(), n)
+}
 
 func (c *cs) populateMap(fullKey string, dest reflect.Value, n node) error {
 
@@ -340,15 +406,19 @@ func (c *cs) populateMap(fullKey string, dest reflect.Value, n node) error {
 			tmp := _n.value
 			_type := tmp.Type()
 			var _dest reflect.Value
-			if _type == typeMapStringNode {
+			switch {
+			case _type == typeMapStringNode:
 				_dest = reflect.MakeMap(typeMapStringAny)
-			} else {
+			case _type == typeArrayNode:
+				_dest = reflect.New(_n.sliceType).Elem()
+			default:
 				_dest = reflect.New(_type).Elem()
 			}
 			err := c.populateDestinationValue(_fullKey, _dest, _n)
 			if err != nil {
 				return err
 			}
+
 			dest.SetMapIndex(key, _dest)
 		}
 	}
@@ -395,7 +465,15 @@ func (c *cs) populateSlice(fullKey string, dest reflect.Value, n node) error {
 	if vals, valsOk := n.value.Interface().([]node); valsOk {
 		for i, _val := range vals {
 
-			v := reflect.New(dest.Type().Elem()).Elem()
+			var v reflect.Value
+			vt := dest.Type().Elem()
+			switch vt.Kind() {
+			case reflect.Map:
+				v = reflect.MakeMap(vt)
+			default:
+				v = reflect.New(vt).Elem()
+			}
+
 			err := c.populateDestinationValue(fmt.Sprintf("%s[%d]", fullKey, i), v, _val)
 			if err != nil {
 				return err
@@ -479,6 +557,26 @@ var (
 	indexedKeyPattern = regexp.MustCompile(`^(\w+)\[([0-9]+)]$`)
 )
 
+func (c *cs) GetDescriptions(key string) (map[string]any, error) {
+
+	res := map[string]any{}
+
+	err := c.withCleanData(func() error {
+		err := c.read(key, key, c.root, &res)
+		if err != nil {
+			err = wrapError(&res, key, err)
+		}
+		return err
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return res, nil
+
+}
+
 func (c *cs) read(fullKey, key string, data map[string]node, into any) error {
 	parts := strings.SplitN(key, ".", 2)
 	thisKey := parts[0]
@@ -524,6 +622,14 @@ func (c *cs) MustRead(key string, into any) {
 	if err := c.Read(key, into); err != nil {
 		panic(err)
 	}
+}
+
+func (c *cs) MustGetDescriptions(key string) map[string]any {
+	res, err := c.GetDescriptions(key)
+	if err != nil {
+		panic(err)
+	}
+	return res
 }
 
 func newConfig() Config {

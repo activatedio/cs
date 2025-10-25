@@ -16,10 +16,13 @@ type SimpleConfig struct {
 }
 
 type ComplexConfig struct {
-	Value1 []string
-	Value2 []int
-	Value3 []bool
-	Value4 []ComplexConfig
+	cs.Entry `description:"Top ComplexConfig"`
+	Value0   string          `description:"value0 desc"`
+	Value1   []string        `description:"value1 desc"`
+	Value2   []int           `description:"value2 desc"`
+	Value3   []bool          `description:"value3 desc"`
+	Value4   *ComplexConfig  `description:"value4 desc"`
+	Value5   []ComplexConfig `description:"value5 desc"`
 }
 
 type Validating struct {
@@ -33,7 +36,7 @@ func (v *Validating) Validate() error {
 	return nil
 }
 
-func TestConfig(t *testing.T) {
+func TestConfig_WriteRead(t *testing.T) {
 
 	a := assert.New(t)
 	r := require.New(t)
@@ -150,10 +153,15 @@ func TestConfig(t *testing.T) {
 			arrange: func(c cs.Config) {
 				c.AddSource(func() (string, any, error) {
 					return key1, &ComplexConfig{
+						Value0: "0",
 						Value1: []string{"a", "b", "c"},
 						Value2: []int{2, 3, 4},
 						Value3: []bool{true, false, true},
-						Value4: []ComplexConfig{
+						Value4: &ComplexConfig{
+							Value1: []string{"x", "y", "z"},
+							Value2: []int{99, 100, 101},
+						},
+						Value5: []ComplexConfig{
 							{
 								Value1: []string{"d", "e", "f"},
 							},
@@ -174,10 +182,15 @@ func TestConfig(t *testing.T) {
 				got2 := &ComplexConfig{}
 				c.MustRead(key1, got2)
 				a.Equal(&ComplexConfig{
+					Value0: "0",
 					Value1: []string{"a", "b", "c"},
 					Value2: []int{2, 3, 4},
 					Value3: []bool{true, false, true},
-					Value4: []ComplexConfig{
+					Value4: &ComplexConfig{
+						Value1: []string{"x", "y", "z"},
+						Value2: []int{99, 100, 101},
+					},
+					Value5: []ComplexConfig{
 						{
 							Value1: []string{"d", "e", "f"},
 						},
@@ -192,8 +205,48 @@ func TestConfig(t *testing.T) {
 				// We can read individual strings
 				c.MustRead("key1.value1[1]", &got3)
 				a.Equal("b", got3)
-				c.MustRead("key1.value4[1].value1[1]", &got3)
+				c.MustRead("key1.value5[1].value1[1]", &got3)
 				a.Equal("h", got3)
+
+				// Check the root map
+				mapRef1 := map[string]any{
+					"key1": map[string]any{
+						"value0": "0",
+						"value1": []string{"a", "b", "c"},
+						"value2": []int{2, 3, 4},
+						"value3": []bool{true, false, true},
+						"value4": map[string]any{
+							"value1": []string{"x", "y", "z"},
+							"value2": []int{99, 100, 101},
+						},
+						"value5": []map[string]any{
+							{
+								"value1": []string{"d", "e", "f"},
+							},
+							{
+								"value1": []string{"g", "h", "i"},
+							},
+						},
+					},
+				}
+				mapRes1 := map[string]any{}
+
+				c.MustRead("", &mapRes1)
+				a.Equal(mapRef1, mapRes1)
+
+				mapRes1 = *cs.MustGet[map[string]any](c, "")
+				a.Equal(mapRef1, mapRes1)
+
+				/*
+
+				 */
+
+				// Assert descriptions descriptions
+				/*
+					descs := c.MustGetDescriptions("")
+					a.Equal(map[string]any{}, descs)
+
+				*/
 			},
 		},
 		"default source": {
