@@ -262,6 +262,7 @@ func (c *cs) fromNode(fullKey string, n node, into any) error {
 	return c.validatingHook(into)
 }
 
+// populateDestinationValue populates the destination value based on its kind.
 func (c *cs) populateDestinationValue(fullKey string, dest reflect.Value, n node) error {
 	switch dest.Kind() {
 	case reflect.Ptr:
@@ -270,39 +271,42 @@ func (c *cs) populateDestinationValue(fullKey string, dest reflect.Value, n node
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
 		reflect.Float32, reflect.Float64,
 		reflect.Bool:
-
-		for _, src := range c.lateBindingSources {
-			lbVal, err := src(fullKey)
-			if err != nil {
-				return err
-			}
-			if lbVal != nil {
-				n = node{value: reflect.ValueOf(lbVal)}
-			}
-		}
-
-		// This skips the set in case of a zero value
-		if n.value.IsValid() {
-			// Need some type conversions, especially given some of the late binding sources will be strings from
-			// environment variables
-			err := c.castAndSet(dest, n.value)
-			if err != nil {
-				return err
-			}
-		}
-		return nil
+		return c.populatePrimitiveValue(fullKey, dest, n)
 	case reflect.Map:
-		// We need to be able to write to the struct
 		return c.populateMap(fullKey, dest, n)
 	case reflect.Struct:
-		// We need to be able to write to the struct
 		return c.populateStruct(fullKey, dest, n)
 	case reflect.Slice:
-		// We need to be able to write to the struct
 		return c.populateSlice(fullKey, dest, n)
 	default:
 		return fmt.Errorf("unsupported destination kind %s", dest.Kind().String())
 	}
+}
+
+// populatePrimitiveValue populates a primitive value (string, int, float, bool) using late binding sources and type conversion.
+func (c *cs) populatePrimitiveValue(fullKey string, dest reflect.Value, n node) error {
+	for _, src := range c.lateBindingSources {
+		lbVal, err := src(fullKey)
+		if err != nil {
+			return err
+		}
+		if lbVal != nil {
+			n = node{value: reflect.ValueOf(lbVal)}
+		}
+	}
+
+	// Skip setting if the value is zero
+	if !n.value.IsValid() {
+		return nil
+	}
+
+	// Type conversion, especially for late binding sources (e.g., environment variables as strings)
+	err := c.castAndSet(dest, n.value)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (c *cs) castAndSet(dest, src reflect.Value) error { //nolint:gocyclo // switch statement ok for readability
@@ -368,61 +372,59 @@ func (c *cs) populateDestinationPtr(key string, dest reflect.Value, n node) erro
 }
 
 func (c *cs) populateMap(fullKey string, dest reflect.Value, n node) error {
-
 	val := n.value
 
-	// type must be map[string]reflect.Value
 	if val.Kind() != reflect.Map {
-		// Value is not a map, can't do anything
-		return nil
+		return nil // Nothing to do if the value is not a map
 	}
 
-	vInt := val.Interface()
-	dInt := dest.Interface()
-
-	if _, ok := vInt.(map[string]node); !ok {
-		return errors.New("invalid internal map type. must be map[string]node")
+	sourceMap, ok := val.Interface().(map[string]node)
+	if !ok {
+		return errors.New("invalid source map type. must be map[string]node")
 	}
 
-	if _, ok := dInt.(map[string]any); !ok {
+	_, ok = dest.Interface().(map[string]any)
+	if !ok {
 		return errors.New("invalid destination map type. must be map[string]any")
 	}
 
-	for _, key := range val.MapKeys() {
-		exist := dest.MapIndex(key)
-		var _fullKey string
-		if fullKey == "" {
-			_fullKey = toLowerCamel(key.String())
-		} else {
-			_fullKey = fmt.Sprintf("%s.%s", fullKey, toLowerCamel(key.String()))
+	for key, sourceNode := range sourceMap {
+		destinationKey := toLowerCamel(key)
+		currentFullKey := destinationKey
+		if fullKey != "" {
+			currentFullKey = fmt.Sprintf("%s.%s", fullKey, destinationKey)
 		}
-		_n := val.MapIndex(key).Interface().(node)
-		if exist.IsValid() {
-			err := c.populateDestinationValue(_fullKey, exist, _n)
-			if err != nil {
+
+		existingValue := dest.MapIndex(reflect.ValueOf(key)) // Use original key for lookup
+
+		if existingValue.IsValid() {
+			if err := c.populateDestinationValue(currentFullKey, existingValue, sourceNode); err != nil {
 				return err
 			}
 		} else {
-			tmp := _n.value
-			_type := tmp.Type()
-			var _dest reflect.Value
-			switch {
-			case _type == typeMapStringNode:
-				_dest = reflect.MakeMap(typeMapStringAny)
-			case _type == typeArrayNode:
-				_dest = reflect.New(_n.sliceType).Elem()
-			default:
-				_dest = reflect.New(_type).Elem()
-			}
-			err := c.populateDestinationValue(_fullKey, _dest, _n)
-			if err != nil {
+			destinationValue := c.createDestinationValue(sourceNode)
+
+			if err := c.populateDestinationValue(currentFullKey, destinationValue, sourceNode); err != nil {
 				return err
 			}
 
-			dest.SetMapIndex(key, _dest)
+			dest.SetMapIndex(reflect.ValueOf(key), destinationValue) // Use original key for setting
 		}
 	}
+
 	return nil
+}
+
+// createDestinationValue creates a new destination value based on the source node's type.
+func (c *cs) createDestinationValue(n node) reflect.Value {
+	switch n.value.Type() {
+	case typeMapStringNode:
+		return reflect.MakeMap(typeMapStringAny)
+	case typeArrayNode:
+		return reflect.New(n.sliceType).Elem()
+	default:
+		return reflect.New(n.value.Type()).Elem()
+	}
 }
 
 func (c *cs) populateStruct(fullKey string, dest reflect.Value, n node) error {
