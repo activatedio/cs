@@ -11,6 +11,14 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+type E2EConfig struct {
+	Value1 string
+	Value2 int
+	Value3 bool
+}
+
+// TODO - test that the descriptions stay even once sources override them without descriptions
+
 func TestMultipleSources(t *testing.T) {
 
 	a := assert.New(t)
@@ -21,6 +29,11 @@ func TestMultipleSources(t *testing.T) {
 	unit.AddSource(json.FromPath("testdata/config.json", "prefixB"))
 	unit.AddSource(yaml.FromPath("testdata/config.yaml", ""))
 	unit.AddSource(json.FromPath("testdata/config.json", ""))
+	unit.AddSource(sources.FromValue("prefixC", &E2EConfig{
+		Value1: "a",
+		Value2: 2,
+		Value3: true,
+	}))
 	unit.AddLateBindingSource(sources.FromEnvironment("TEST"))
 
 	res := map[string]any{}
@@ -61,6 +74,11 @@ func TestMultipleSources(t *testing.T) {
 				"devMode":    true,
 				"hostname":   "example.org",
 				"numThreads": float64(2),
+			},
+			"prefixC": map[string]interface{}{
+				"value1": "a",
+				"value2": 2,
+				"value3": true,
 			},
 			"sleepSeconds": 60,
 		},
