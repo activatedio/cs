@@ -195,13 +195,16 @@ func TestConfig_WriteRead(t *testing.T) {
 					Value4: &ComplexConfig{
 						Value1: []string{"x", "y", "z"},
 						Value2: []int{99, 100, 101},
+						Value4: &ComplexConfig{},
 					},
 					Value5: []ComplexConfig{
 						{
 							Value1: []string{"d", "e", "f"},
+							Value4: &ComplexConfig{},
 						},
 						{
 							Value1: []string{"g", "h", "i"},
+							Value4: &ComplexConfig{},
 						},
 					},
 				}, got2)
@@ -222,15 +225,29 @@ func TestConfig_WriteRead(t *testing.T) {
 						"value2": []int{2, 3, 4},
 						"value3": []bool{true, false, true},
 						"value4": map[string]any{
+							"value0": "",
 							"value1": []string{"x", "y", "z"},
 							"value2": []int{99, 100, 101},
+							"value3": []bool(nil),
+							"value4": map[string]any{},
+							"value5": []map[string]any(nil),
 						},
 						"value5": []map[string]any{
 							{
+								"value0": "",
 								"value1": []string{"d", "e", "f"},
+								"value2": []int(nil),
+								"value3": []bool(nil),
+								"value4": map[string]any{},
+								"value5": []map[string]any(nil),
 							},
 							{
+								"value0": "",
 								"value1": []string{"g", "h", "i"},
+								"value2": []int(nil),
+								"value3": []bool(nil),
+								"value4": map[string]any{},
+								"value5": []map[string]any(nil),
 							},
 						},
 					},
