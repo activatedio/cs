@@ -133,7 +133,12 @@ func (c *cs) toNode(v any, desc string) (node, error) {
 	if typ.Kind() == reflect.Ptr {
 		typ = typ.Elem()
 		// We assume we can interface this
-		v = reflect.Indirect(reflect.ValueOf(v)).Interface()
+		i := reflect.Indirect(reflect.ValueOf(v))
+		if i.IsValid() {
+			v = i.Interface()
+		} else {
+			v = reflect.Zero(reflect.TypeOf(v))
+		}
 	}
 
 	switch typ.Kind() {
@@ -195,9 +200,11 @@ func (c *cs) toNodeFromStruct(v any, desc string) (node, error) {
 		// We skip this if the field is a zero value
 		// TODO - allow this behavior to be configurable by source
 		ft := val.Type().Field(i)
-		if ft.Type == typeEntry && desc == "" {
-			desc = descriptionFromTag(ft.Tag)
-		} else if f.CanInterface() && !f.IsZero() {
+		if ft.Type == typeEntry {
+			if desc == "" {
+				desc = descriptionFromTag(ft.Tag)
+			}
+		} else if f.CanInterface() /*&& !f.IsZero()*/ {
 			fv, err := c.toNode(f.Interface(), descriptionFromTag(ft.Tag))
 			if err != nil {
 				return node{}, err
@@ -358,7 +365,7 @@ func (c *cs) castAndSet(dest, src reflect.Value) error { //nolint:gocyclo // swi
 
 func (c *cs) populateDestinationPtr(key string, dest reflect.Value, n node) error {
 
-	// dest is always aptr
+	// dest is always a ptr
 
 	if !n.value.IsValid() {
 		return nil
@@ -492,7 +499,7 @@ func (c *cs) populateSlice(fullKey string, dest reflect.Value, n node) error {
 	return nil
 }
 
-func (c *cs) replaceOrMerge(existing node, in node) (node, error) {
+func (c *cs) replaceOrMerge(existing node, in node) (node, error) { //nolint:gocyclo // okay for marginally high complexity
 
 	switch existing.value.Kind() {
 	case reflect.String, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
@@ -501,6 +508,10 @@ func (c *cs) replaceOrMerge(existing node, in node) (node, error) {
 		reflect.Bool:
 		if in.value.Kind() == reflect.Map {
 			return node{}, fmt.Errorf("cannot overrwrite type %s with a map", existing.value.Kind().String())
+		}
+		// Do nothing if the incoming value is not valid
+		if in.value.IsZero() {
+			return existing, nil
 		}
 		return in, nil
 	case reflect.Map:
