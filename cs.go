@@ -204,7 +204,8 @@ func (c *cs) toNodeFromStruct(v any, desc string) (node, error) {
 			if desc == "" {
 				desc = descriptionFromTag(ft.Tag)
 			}
-		} else if f.CanInterface() /*&& !f.IsZero()*/ {
+			// We skip if this is a nil pointer
+		} else if f.CanInterface() && (f.Kind() != reflect.Ptr || !f.IsNil()) {
 			fv, err := c.toNode(f.Interface(), descriptionFromTag(ft.Tag))
 			if err != nil {
 				return node{}, err
@@ -508,6 +509,16 @@ func (c *cs) replaceOrMerge(existing node, in node) (node, error) { //nolint:goc
 		reflect.Bool:
 		if in.value.Kind() == reflect.Map {
 			return node{}, fmt.Errorf("cannot overrwrite type %s with a map", existing.value.Kind().String())
+		}
+		// Do nothing if the incoming value is not valid
+		if in.value.IsZero() {
+			return existing, nil
+		}
+		return in, nil
+	// Right now we simply replace the slices
+	case reflect.Slice:
+		if in.value.Kind() != reflect.Slice {
+			return node{}, fmt.Errorf("invalid value for slice target %s", in.value.Kind().String())
 		}
 		// Do nothing if the incoming value is not valid
 		if in.value.IsZero() {

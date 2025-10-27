@@ -59,6 +59,7 @@ var (
 		Value4: &ComplexConfig{
 			Value1: []string{"x", "y", "z"},
 			Value2: []int{99, 100, 101},
+			Value4: &ComplexConfig{},
 		},
 		Value5: []ComplexConfig{
 			{
@@ -200,11 +201,9 @@ func TestConfig_WriteRead(t *testing.T) {
 					Value5: []ComplexConfig{
 						{
 							Value1: []string{"d", "e", "f"},
-							Value4: &ComplexConfig{},
 						},
 						{
 							Value1: []string{"g", "h", "i"},
-							Value4: &ComplexConfig{},
 						},
 					},
 				}, got2)
@@ -229,7 +228,13 @@ func TestConfig_WriteRead(t *testing.T) {
 							"value1": []string{"x", "y", "z"},
 							"value2": []int{99, 100, 101},
 							"value3": []bool(nil),
-							"value4": map[string]any{},
+							"value4": map[string]any{
+								"value0": "",
+								"value1": []string(nil),
+								"value2": []int(nil),
+								"value3": []bool(nil),
+								"value5": []map[string]any(nil),
+							},
 							"value5": []map[string]any(nil),
 						},
 						"value5": []map[string]any{
@@ -238,7 +243,6 @@ func TestConfig_WriteRead(t *testing.T) {
 								"value1": []string{"d", "e", "f"},
 								"value2": []int(nil),
 								"value3": []bool(nil),
-								"value4": map[string]any{},
 								"value5": []map[string]any(nil),
 							},
 							{
@@ -246,7 +250,6 @@ func TestConfig_WriteRead(t *testing.T) {
 								"value1": []string{"g", "h", "i"},
 								"value2": []int(nil),
 								"value3": []bool(nil),
-								"value4": map[string]any{},
 								"value5": []map[string]any(nil),
 							},
 						},
@@ -262,7 +265,7 @@ func TestConfig_WriteRead(t *testing.T) {
 
 			},
 		},
-		"default source": {
+		"default source with override - simple structs": {
 			arrange: func(c cs.Config) {
 				c.AddSource(func() (string, any, error) {
 					return key1, &SimpleConfig{
@@ -284,6 +287,39 @@ func TestConfig_WriteRead(t *testing.T) {
 					Value2: 2,
 					Value3: true,
 				}, cs.MustGet[SimpleConfig](c, key1))
+			},
+		},
+		"default source with override - complex structs": {
+			arrange: func(c cs.Config) {
+				c.AddSource(func() (string, any, error) {
+					return key1, &ComplexConfig{
+						Value1: []string{"j", "k", "l"},
+					}, nil
+				})
+				c.AddDefaultSource(func() (string, any, error) {
+					return key1, complex1, nil
+				})
+			},
+			assert: func(c cs.Config) {
+				a.Equal(&ComplexConfig{
+					Value0: "0",
+					Value1: []string{"j", "k", "l"},
+					Value2: []int{2, 3, 4},
+					Value3: []bool{true, false, true},
+					Value4: &ComplexConfig{
+						Value1: []string{"x", "y", "z"},
+						Value2: []int{99, 100, 101},
+						Value4: &ComplexConfig{},
+					},
+					Value5: []ComplexConfig{
+						{
+							Value1: []string{"d", "e", "f"},
+						},
+						{
+							Value1: []string{"g", "h", "i"},
+						},
+					},
+				}, cs.MustGet[ComplexConfig](c, key1))
 			},
 		},
 		"validating struct - pass": {

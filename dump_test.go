@@ -82,6 +82,11 @@ key2: Top ComplexConfig
       [2]: (101)
     value3: value3 desc
     value4: value4 desc
+      value0: value0 desc ()
+      value1: value1 desc
+      value2: value2 desc
+      value3: value3 desc
+      value5: value5 desc
     value5: value5 desc
   value5: value5 desc
     [0]: Top ComplexConfig
@@ -92,7 +97,6 @@ key2: Top ComplexConfig
         [2]: (f)
       value2: value2 desc
       value3: value3 desc
-      value4: value4 desc
       value5: value5 desc
     [1]: Top ComplexConfig
       value0: value0 desc ()
@@ -102,7 +106,6 @@ key2: Top ComplexConfig
         [2]: (i)
       value2: value2 desc
       value3: value3 desc
-      value4: value4 desc
       value5: value5 desc
 `,
 		},
@@ -162,6 +165,11 @@ key2: Top ComplexConfig
       [2]: (101)
     value3: value3 desc
     value4: value4 desc
+      value0: value0 desc ()
+      value1: value1 desc
+      value2: value2 desc
+      value3: value3 desc
+      value5: value5 desc
     value5: value5 desc
   value5: value5 desc
     [0]: Top ComplexConfig
@@ -172,7 +180,6 @@ key2: Top ComplexConfig
         [2]: (f)
       value2: value2 desc
       value3: value3 desc
-      value4: value4 desc
       value5: value5 desc
     [1]: Top ComplexConfig
       value0: value0 desc ()
@@ -182,7 +189,6 @@ key2: Top ComplexConfig
         [2]: (i)
       value2: value2 desc
       value3: value3 desc
-      value4: value4 desc
       value5: value5 desc
 `,
 		},
