@@ -18,6 +18,7 @@ func TestCs_Dump(t *testing.T) {
 		name           string
 		arrange        func() cs.Config
 		expectedResult string
+		opts           []cs.DumpOption
 	}{
 		{
 			name:           "empty",
@@ -110,6 +111,62 @@ key2: Top ComplexConfig
 `,
 		},
 		{
+			name: "with omit empty",
+			opts: []cs.DumpOption{cs.WithOmitEmpty()},
+			arrange: func() cs.Config {
+				c := cs.New()
+				c.AddSource(func() (string, any, error) {
+					return key1, simple1, nil
+				})
+				c.AddSource(func() (string, any, error) {
+					return key2, &ComplexConfig{
+						Value0: "0",
+						Value2: []int{2, 3, 4},
+						Value4: &ComplexConfig{
+							Value1: []string{"x", "y", "z"},
+							Value4: &ComplexConfig{},
+						},
+						Value5: []ComplexConfig{
+							{
+								Value1: []string{"d", "e", "f"},
+							},
+							{
+								Value1: []string{"g", "h", "i"},
+							},
+						},
+					}, nil
+				})
+				return c
+			},
+			expectedResult: `key1:
+  value1: (a)
+  value2: (2)
+  value3: (true)
+key2: Top ComplexConfig
+  value0: value0 desc (0)
+  value2: value2 desc
+    [0]: (2)
+    [1]: (3)
+    [2]: (4)
+  value4: value4 desc
+    value1: value1 desc
+      [0]: (x)
+      [1]: (y)
+      [2]: (z)
+  value5: value5 desc
+    [0]: Top ComplexConfig
+      value1: value1 desc
+        [0]: (d)
+        [1]: (e)
+        [2]: (f)
+    [1]: Top ComplexConfig
+      value1: value1 desc
+        [0]: (g)
+        [1]: (h)
+        [2]: (i)
+`,
+		},
+		{
 			name: "full with late binding",
 			arrange: func() cs.Config {
 				c := cs.New()
@@ -199,7 +256,7 @@ key2: Top ComplexConfig
 
 			unit := tt.arrange()
 			buf := &bytes.Buffer{}
-			r.NoError(unit.Dump(cs.WithDumpOut(buf)))
+			r.NoError(unit.Dump(append(tt.opts, cs.WithDumpOut(buf))...))
 			a.Equal(tt.expectedResult, buf.String())
 
 		})
