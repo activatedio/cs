@@ -9,8 +9,21 @@ import (
 	"strings"
 )
 
+// dumpOps provides a way to defer dump operations, allowing parents to know if they are going to dump as well
+type dumpOps []func() error
+
+func (d dumpOps) dump() error {
+	for _, o := range d {
+		if err := o(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 type dumpOptions struct {
-	out io.Writer
+	out       io.Writer
+	omitEmpty bool
 }
 
 type dumpContext struct {
@@ -45,6 +58,13 @@ func WithDumpOut(out io.Writer) DumpOption {
 	}
 }
 
+// WithOmitEmpty instructs ths dumper to not show empty entries
+func WithOmitEmpty() DumpOption {
+	return func(o *dumpOptions) {
+		o.omitEmpty = true
+	}
+}
+
 // Dump outputs the internal state of the structure to an io.Writer, such as os.Stdout, with customizable options.
 func (c *cs) Dump(opts ...DumpOption) error {
 
@@ -63,11 +83,18 @@ func (c *cs) Dump(opts ...DumpOption) error {
 		if err != nil {
 			return err
 		}
-		return c.dumpNode("", data, &dumpContext{
+		op, err := c.dumpNode("", data, &dumpContext{
 			opts:   o,
 			level:  0,
 			prefix: "",
 		})
+		if err != nil {
+			return err
+		}
+		if op == nil {
+			return nil
+		}
+		return op()
 	})
 
 }
@@ -182,9 +209,7 @@ func (c *cs) writeLine(name string, val node, ctx *dumpContext) error {
 	return err
 }
 
-func (c *cs) dumpNodeMap(val map[string]node, ctx *dumpContext) error {
-
-	var err error
+func (c *cs) dumpNodeMap(val map[string]node, ctx *dumpContext) (dumpOps, error) {
 
 	keys := make([]string, len(val))
 	i := 0
@@ -194,65 +219,90 @@ func (c *cs) dumpNodeMap(val map[string]node, ctx *dumpContext) error {
 	}
 
 	slices.Sort(keys)
+	var ops dumpOps
 
 	for _, k := range keys {
-		err = c.dumpNode(k, val[k], ctx)
+		op, err := c.dumpNode(k, val[k], ctx)
 		if err != nil {
-			return err
+			return nil, err
+		}
+		if op != nil {
+			ops = append(ops, op)
 		}
 	}
 
-	return nil
+	return ops, nil
 }
 
-func (c *cs) dumpNodeSlice(val []node, ctx *dumpContext) error {
+func (c *cs) dumpNodeSlice(val []node, ctx *dumpContext) (dumpOps, error) {
 
-	var err error
+	var ops dumpOps
 
 	for i, v := range val {
-		err = c.dumpNode(fmt.Sprintf("[%d]", i), v, ctx)
+		op, err := c.dumpNode(fmt.Sprintf("[%d]", i), v, ctx)
 		if err != nil {
-			return err
+			return nil, err
+		}
+		if op != nil {
+			ops = append(ops, op)
 		}
 	}
 
-	return nil
+	return ops, nil
 }
 
-func (c *cs) dumpNode(name string, val node, ctx *dumpContext) error {
-
-	var err error
+func (c *cs) dumpNode(name string, val node, ctx *dumpContext) (func() error, error) { //nolint:gocyclo // marginally high is okay
 
 	switch val.value.Type().Kind() {
 	case reflect.Map:
 		// We don't write header line for the root
 		addLevel := 0
 		if name != "" {
-			err = c.writeHeaderLine(name, val, ctx)
-			if err != nil {
-				return err
-			}
 			addLevel = 1
 		}
-		return c.dumpNodeMap(val.value.Interface().(map[string]node), ctx.modify(dumpModify{
+		ops, err := c.dumpNodeMap(val.value.Interface().(map[string]node), ctx.modify(dumpModify{
 			appendPrefix: name,
 			addLevel:     addLevel,
 		}))
-	case reflect.Slice:
-		err = c.writeHeaderLine(name, val, ctx)
 		if err != nil {
-			return err
+			return nil, err
 		}
-		return c.dumpNodeSlice(val.value.Interface().([]node), ctx.modify(dumpModify{
+		if len(ops) != 0 || !ctx.opts.omitEmpty {
+			return func() error {
+				// special case for name is blank
+				if name != "" {
+					err = c.writeHeaderLine(name, val, ctx)
+					if err != nil {
+						return err
+					}
+				}
+				return ops.dump()
+			}, nil
+		}
+	case reflect.Slice:
+		ops, err := c.dumpNodeSlice(val.value.Interface().([]node), ctx.modify(dumpModify{
 			appendPrefix: name,
 			addLevel:     1,
 		}))
-	default:
-		err = c.writeLine(name, val, ctx)
 		if err != nil {
-			return err
+			return nil, err
+		}
+		if len(ops) != 0 || !ctx.opts.omitEmpty {
+			return func() error {
+				err = c.writeHeaderLine(name, val, ctx)
+				if err != nil {
+					return err
+				}
+				return ops.dump()
+			}, nil
+		}
+	default:
+		if !val.value.IsZero() || !ctx.opts.omitEmpty {
+			return func() error {
+				return c.writeLine(name, val, ctx)
+			}, nil
 		}
 	}
 
-	return nil
+	return nil, nil
 }
