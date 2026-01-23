@@ -443,53 +443,61 @@ func (c *cs) populateDestinationPtr(key string, dest reflect.Value, n node) erro
 	return c.populateDestinationValue(key, dest.Elem(), n)
 }
 
-func (c *cs) populateMap(fullKey string, dest reflect.Value, n node) error {
-	val := n.value
+func (c *cs) populateMap(fullKey string, dest reflect.Value, n node) error { //nolint:gocyclo // okay for marginally high complexity
 
-	if val.Kind() != reflect.Map {
-		return nil // Nothing to do if the value is not a map
+	srcVal := n.value
+	if srcVal.Kind() != reflect.Map {
+		return nil // nothing to do if the source value is not a map
 	}
 
-	sourceMap, ok := val.Interface().(map[string]node)
+	srcMap, ok := srcVal.Interface().(map[string]node)
 	if !ok {
 		return errors.New("invalid source map type. must be map[string]node")
 	}
-
-	_, ok = dest.Interface().(map[string]any)
-	if !ok {
+	if _, ok := dest.Interface().(map[string]any); !ok {
 		return errors.New("invalid destination map type. must be map[string]any")
 	}
 
-	for key, sourceNode := range sourceMap {
+	isSkippableValue := func(v reflect.Value) bool {
+		if !v.IsValid() {
+			return true
+		}
+		switch v.Kind() {
+		case reflect.Map, reflect.Slice:
+			return v.IsNil()
+		default:
+			return false
+		}
+	}
 
-		sv := sourceNode.value
-		// we don't write sourceNodes if they are invalid (nil)
-		if !sv.IsValid() ||
-			((sv.Kind() == reflect.Map || sv.Kind() == reflect.Slice) && sv.IsNil()) {
+	joinKey := func(prefix, key string) string {
+		if prefix == "" {
+			return key
+		}
+		return fmt.Sprintf("%s.%s", prefix, key)
+	}
+
+	for srcKey, childNode := range srcMap {
+		if isSkippableValue(childNode.value) {
 			continue
 		}
 
-		destinationKey := toLowerCamel(key)
-		currentFullKey := destinationKey
-		if fullKey != "" {
-			currentFullKey = fmt.Sprintf("%s.%s", fullKey, destinationKey)
-		}
+		pathKey := joinKey(fullKey, toLowerCamel(srcKey))
+		destMapKey := reflect.ValueOf(srcKey) // keep original key for lookup/set
 
-		existingValue := dest.MapIndex(reflect.ValueOf(key)) // Use original key for lookup
-
-		if existingValue.IsValid() {
-			if err := c.populateDestinationValue(currentFullKey, existingValue, sourceNode); err != nil {
+		existing := dest.MapIndex(destMapKey)
+		if existing.IsValid() {
+			if err := c.populateDestinationValue(pathKey, existing, childNode); err != nil {
 				return err
 			}
-		} else {
-			destinationValue := c.createDestinationValue(sourceNode)
-
-			if err := c.populateDestinationValue(currentFullKey, destinationValue, sourceNode); err != nil {
-				return err
-			}
-
-			dest.SetMapIndex(reflect.ValueOf(key), destinationValue) // Use original key for setting
+			continue
 		}
+
+		newValue := c.createDestinationValue(childNode)
+		if err := c.populateDestinationValue(pathKey, newValue, childNode); err != nil {
+			return err
+		}
+		dest.SetMapIndex(destMapKey, newValue)
 	}
 
 	return nil
