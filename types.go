@@ -52,6 +52,8 @@ const (
 	DescriptionKey = "_description"
 	// DescriptionTagName name of the description tag
 	DescriptionTagName = "description"
+	// KeyTagName name of the key tag
+	KeyTagName = "key"
 )
 
 // Entry allows for a description to be applied via a tag to this struct

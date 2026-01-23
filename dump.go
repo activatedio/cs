@@ -101,16 +101,16 @@ func (c *cs) Dump(opts ...DumpOption) error {
 
 func (c *cs) overlayLateBinding(fullKey string, val node) (node, error) {
 
-	switch val.value.Type().Kind() {
+	switch val.getEffectiveType().Kind() {
 	case reflect.Map:
 		tmp, err := c.overlayLateBindingMap(fullKey, val.value.Interface().(map[string]node))
 		if err != nil {
 			return node{}, err
 		}
 		return node{
-			description: val.description,
-			sliceType:   val.sliceType,
-			value:       reflect.ValueOf(tmp),
+			meta:      val.meta,
+			sliceType: val.sliceType,
+			value:     reflect.ValueOf(tmp),
 		}, nil
 	case reflect.Slice:
 		tmp, err := c.overlayLateBindingSlice(fullKey, val.value.Interface().([]node))
@@ -118,9 +118,9 @@ func (c *cs) overlayLateBinding(fullKey string, val node) (node, error) {
 			return node{}, err
 		}
 		return node{
-			description: val.description,
-			sliceType:   val.sliceType,
-			value:       reflect.ValueOf(tmp),
+			meta:      val.meta,
+			sliceType: val.sliceType,
+			value:     reflect.ValueOf(tmp),
 		}, nil
 	default:
 		var lbRes any
@@ -141,9 +141,9 @@ func (c *cs) overlayLateBinding(fullKey string, val node) (node, error) {
 				return node{}, err
 			}
 			return node{
-				description: val.description,
-				sliceType:   val.sliceType,
-				value:       tmp,
+				meta:      val.meta,
+				sliceType: val.sliceType,
+				value:     tmp,
 			}, nil
 		}
 		return val, nil
@@ -184,8 +184,11 @@ func (c *cs) writeHeaderLine(name string, val node, ctx *dumpContext) error {
 		sb.WriteString(strings.Repeat("  ", ctx.level))
 	}
 	sb.WriteString(fmt.Sprintf("%s:", name))
-	if val.description != "" {
-		sb.WriteString(fmt.Sprintf(" %s", val.description))
+	if val.meta.description != "" {
+		sb.WriteString(fmt.Sprintf(" %s", val.meta.description))
+	}
+	if val.meta.optional {
+		sb.WriteString(" [optional]")
 	}
 	sb.WriteString("\n")
 	_, err := ctx.opts.out.Write([]byte(sb.String()))
@@ -198,13 +201,21 @@ func (c *cs) writeLine(name string, val node, ctx *dumpContext) error {
 		sb.WriteString(strings.Repeat("  ", ctx.level))
 	}
 	sb.WriteString(fmt.Sprintf("%s:", name))
-	if val.description != "" {
-		sb.WriteString(fmt.Sprintf(" %s", val.description))
+	if val.meta.description != "" {
+		sb.WriteString(fmt.Sprintf(" %s", val.meta.description))
+	}
+	if val.meta.optional {
+		sb.WriteString(" [optional]")
 	}
 
-	sb.WriteString(" (")
-	sb.WriteString(fmt.Sprintf("%v", val.value.Interface()))
-	sb.WriteString(")\n")
+	outVal := val.interfaceOrNil()
+
+	if outVal != nil {
+		sb.WriteString(" (")
+		sb.WriteString(fmt.Sprintf("%v", outVal))
+		sb.WriteString(")")
+	}
+	sb.WriteString("\n")
 	_, err := ctx.opts.out.Write([]byte(sb.String()))
 	return err
 }
@@ -253,7 +264,7 @@ func (c *cs) dumpNodeSlice(val []node, ctx *dumpContext) (dumpOps, error) {
 
 func (c *cs) dumpNode(name string, val node, ctx *dumpContext) (func() error, error) { //nolint:gocyclo // marginally high is okay
 
-	switch val.value.Type().Kind() {
+	switch val.getEffectiveType().Kind() {
 	case reflect.Map:
 		// We don't write header line for the root
 		addLevel := 0
@@ -297,7 +308,7 @@ func (c *cs) dumpNode(name string, val node, ctx *dumpContext) (func() error, er
 			}, nil
 		}
 	default:
-		if !val.value.IsZero() || !ctx.opts.omitEmpty {
+		if (val.value.IsValid() && !val.value.IsZero()) || !ctx.opts.omitEmpty {
 			return func() error {
 				return c.writeLine(name, val, ctx)
 			}, nil

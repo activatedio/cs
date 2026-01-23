@@ -17,12 +17,14 @@ type SimpleConfig struct {
 
 type ComplexConfig struct {
 	cs.Entry `description:"Top ComplexConfig"`
-	Value0   string          `description:"value0 desc"`
+	Value0   string          `description:"value0 desc" key:"value0b"`
 	Value1   []string        `description:"value1 desc"`
 	Value2   []int           `description:"value2 desc"`
 	Value3   []bool          `description:"value3 desc"`
 	Value4   *ComplexConfig  `description:"value4 desc"`
 	Value5   []ComplexConfig `description:"value5 desc"`
+	Value6   *string         `description:"value6 desc" key:"value6b"`
+	Value7   *int            `description:"value7 desc"`
 }
 
 type Validating struct {
@@ -69,6 +71,13 @@ var (
 				Value1: []string{"g", "h", "i"},
 			},
 		},
+	}
+	lita              = "a"
+	litone            = 1
+	complex1Optionals = &ComplexConfig{
+		Value0: "0",
+		Value6: &lita,
+		Value7: &litone,
 	}
 )
 
@@ -173,7 +182,7 @@ func TestConfig_WriteRead(t *testing.T) {
 
 			},
 		},
-		"complex structs": {
+		"complex structs no optional values": {
 			arrange: func(c cs.Config) {
 				c.AddSource(func() (string, any, error) {
 					return key1, complex1, nil
@@ -219,40 +228,67 @@ func TestConfig_WriteRead(t *testing.T) {
 				// Check the root map
 				mapRef1 := map[string]any{
 					"key1": map[string]any{
-						"value0": "0",
-						"value1": []string{"a", "b", "c"},
-						"value2": []int{2, 3, 4},
-						"value3": []bool{true, false, true},
+						"value0b": "0",
+						"value1":  []string{"a", "b", "c"},
+						"value2":  []int{2, 3, 4},
+						"value3":  []bool{true, false, true},
 						"value4": map[string]any{
-							"value0": "",
-							"value1": []string{"x", "y", "z"},
-							"value2": []int{99, 100, 101},
-							"value3": []bool(nil),
+							"value0b": "",
+							"value1":  []string{"x", "y", "z"},
+							"value2":  []int{99, 100, 101},
 							"value4": map[string]any{
-								"value0": "",
-								"value1": []string(nil),
-								"value2": []int(nil),
-								"value3": []bool(nil),
-								"value5": []map[string]any(nil),
+								"value0b": "",
 							},
-							"value5": []map[string]any(nil),
 						},
 						"value5": []map[string]any{
 							{
-								"value0": "",
-								"value1": []string{"d", "e", "f"},
-								"value2": []int(nil),
-								"value3": []bool(nil),
-								"value5": []map[string]any(nil),
+								"value0b": "",
+								"value1":  []string{"d", "e", "f"},
 							},
 							{
-								"value0": "",
-								"value1": []string{"g", "h", "i"},
-								"value2": []int(nil),
-								"value3": []bool(nil),
-								"value5": []map[string]any(nil),
+								"value0b": "",
+								"value1":  []string{"g", "h", "i"},
 							},
 						},
+					},
+				}
+				mapRes1 := map[string]any{}
+
+				c.MustRead("", &mapRes1)
+				a.Equal(mapRef1, mapRes1)
+
+				mapRes1 = *cs.MustGet[map[string]any](c, "")
+				a.Equal(mapRef1, mapRes1)
+
+			},
+		},
+		"complex structs with optional values": {
+			arrange: func(c cs.Config) {
+				c.AddSource(func() (string, any, error) {
+					return key1, complex1Optionals, nil
+				})
+			},
+			assert: func(c cs.Config) {
+				var got1 string
+
+				// We can read individual strings
+				c.MustRead("key1.value6b", &got1)
+				a.Equal(lita, got1)
+
+				got2 := &ComplexConfig{}
+				c.MustRead(key1, got2)
+				a.Equal(&ComplexConfig{
+					Value0: "0",
+					Value6: &lita,
+					Value7: &litone,
+				}, got2)
+
+				// Check the root map
+				mapRef1 := map[string]any{
+					"key1": map[string]any{
+						"value0b": "0",
+						"value6b": "a",
+						"value7":  1,
 					},
 				}
 				mapRes1 := map[string]any{}

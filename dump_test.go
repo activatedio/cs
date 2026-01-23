@@ -46,7 +46,7 @@ key2: (value2)
 			arrange: func() cs.Config {
 				c := cs.New()
 				c.AddSource(func() (string, any, error) {
-					return key1, simple1, nil
+					return key1, *simple1, nil
 				})
 				c.AddSource(func() (string, any, error) {
 					return key2, complex1, nil
@@ -57,8 +57,8 @@ key2: (value2)
   value1: (a)
   value2: (2)
   value3: (true)
-key2: Top ComplexConfig
-  value0: value0 desc (0)
+key2: Top ComplexConfig [optional]
+  value0b: value0 desc (0)
   value1: value1 desc
     [0]: (a)
     [1]: (b)
@@ -71,8 +71,8 @@ key2: Top ComplexConfig
     [0]: (true)
     [1]: (false)
     [2]: (true)
-  value4: value4 desc
-    value0: value0 desc ()
+  value4: value4 desc [optional]
+    value0b: value0 desc ()
     value1: value1 desc
       [0]: (x)
       [1]: (y)
@@ -82,16 +82,20 @@ key2: Top ComplexConfig
       [1]: (100)
       [2]: (101)
     value3: value3 desc
-    value4: value4 desc
-      value0: value0 desc ()
+    value4: value4 desc [optional]
+      value0b: value0 desc ()
       value1: value1 desc
       value2: value2 desc
       value3: value3 desc
       value5: value5 desc
+      value6b: value6 desc [optional]
+      value7: value7 desc [optional]
     value5: value5 desc
+    value6b: value6 desc [optional]
+    value7: value7 desc [optional]
   value5: value5 desc
     [0]: Top ComplexConfig
-      value0: value0 desc ()
+      value0b: value0 desc ()
       value1: value1 desc
         [0]: (d)
         [1]: (e)
@@ -99,8 +103,10 @@ key2: Top ComplexConfig
       value2: value2 desc
       value3: value3 desc
       value5: value5 desc
+      value6b: value6 desc [optional]
+      value7: value7 desc [optional]
     [1]: Top ComplexConfig
-      value0: value0 desc ()
+      value0b: value0 desc ()
       value1: value1 desc
         [0]: (g)
         [1]: (h)
@@ -108,6 +114,10 @@ key2: Top ComplexConfig
       value2: value2 desc
       value3: value3 desc
       value5: value5 desc
+      value6b: value6 desc [optional]
+      value7: value7 desc [optional]
+  value6b: value6 desc [optional]
+  value7: value7 desc [optional]
 `,
 		},
 		{
@@ -116,10 +126,10 @@ key2: Top ComplexConfig
 			arrange: func() cs.Config {
 				c := cs.New()
 				c.AddSource(func() (string, any, error) {
-					return key1, simple1, nil
+					return key1, *simple1, nil
 				})
 				c.AddSource(func() (string, any, error) {
-					return key2, &ComplexConfig{
+					return key2, ComplexConfig{
 						Value0: "0",
 						Value2: []int{2, 3, 4},
 						Value4: &ComplexConfig{
@@ -143,12 +153,12 @@ key2: Top ComplexConfig
   value2: (2)
   value3: (true)
 key2: Top ComplexConfig
-  value0: value0 desc (0)
+  value0b: value0 desc (0)
   value2: value2 desc
     [0]: (2)
     [1]: (3)
     [2]: (4)
-  value4: value4 desc
+  value4: value4 desc [optional]
     value1: value1 desc
       [0]: (x)
       [1]: (y)
@@ -171,17 +181,17 @@ key2: Top ComplexConfig
 			arrange: func() cs.Config {
 				c := cs.New()
 				c.AddSource(func() (string, any, error) {
-					return key1, simple1, nil
+					return key1, *simple1, nil
 				})
 				c.AddSource(func() (string, any, error) {
-					return key2, complex1, nil
+					return key2, *complex1, nil
 				})
 				c.AddLateBindingSource(func(key string) (any, error) {
 
 					switch key {
 					case "key1.value1":
 						return "late binding value 1", nil
-					case "key2.value0":
+					case "key2.value0b":
 						return "late binding value 0", nil
 					case "key2.value2[2]":
 						return "9999", nil
@@ -197,7 +207,7 @@ key2: Top ComplexConfig
   value2: (2)
   value3: (true)
 key2: Top ComplexConfig
-  value0: value0 desc (late binding value 0)
+  value0b: value0 desc (late binding value 0)
   value1: value1 desc
     [0]: (a)
     [1]: (b)
@@ -210,8 +220,8 @@ key2: Top ComplexConfig
     [0]: (true)
     [1]: (false)
     [2]: (true)
-  value4: value4 desc
-    value0: value0 desc ()
+  value4: value4 desc [optional]
+    value0b: value0 desc ()
     value1: value1 desc
       [0]: (x)
       [1]: (y)
@@ -221,16 +231,20 @@ key2: Top ComplexConfig
       [1]: (100)
       [2]: (101)
     value3: value3 desc
-    value4: value4 desc
-      value0: value0 desc ()
+    value4: value4 desc [optional]
+      value0b: value0 desc ()
       value1: value1 desc
       value2: value2 desc
       value3: value3 desc
       value5: value5 desc
+      value6b: value6 desc [optional]
+      value7: value7 desc [optional]
     value5: value5 desc
+    value6b: value6 desc [optional]
+    value7: value7 desc [optional]
   value5: value5 desc
     [0]: Top ComplexConfig
-      value0: value0 desc ()
+      value0b: value0 desc ()
       value1: value1 desc
         [0]: (d)
         [1]: (e)
@@ -238,8 +252,10 @@ key2: Top ComplexConfig
       value2: value2 desc
       value3: value3 desc
       value5: value5 desc
+      value6b: value6 desc [optional]
+      value7: value7 desc [optional]
     [1]: Top ComplexConfig
-      value0: value0 desc ()
+      value0b: value0 desc ()
       value1: value1 desc
         [0]: (g)
         [1]: (h)
@@ -247,6 +263,10 @@ key2: Top ComplexConfig
       value2: value2 desc
       value3: value3 desc
       value5: value5 desc
+      value6b: value6 desc [optional]
+      value7: value7 desc [optional]
+  value6b: value6 desc [optional]
+  value7: value7 desc [optional]
 `,
 		},
 	}

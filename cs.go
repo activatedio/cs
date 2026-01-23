@@ -19,11 +19,32 @@ var (
 	typeMapStringAny  = reflect.TypeFor[map[string]any]()
 )
 
-type node struct {
+type metadata struct {
 	description string
+	optional    bool
+}
+
+type node struct {
+	meta metadata
 	// for arrays which need a type
 	sliceType reflect.Type
+	nilType   reflect.Type
 	value     reflect.Value
+}
+
+func (n node) interfaceOrNil() any {
+
+	if n.value.IsValid() && n.value.CanInterface() {
+		return n.value.Interface()
+	}
+	return nil
+}
+
+func (n node) getEffectiveType() reflect.Type {
+	if n.value.Kind() == reflect.Invalid {
+		return n.nilType
+	}
+	return n.value.Type()
 }
 
 type cs struct {
@@ -81,7 +102,7 @@ func (c *cs) loadData() error {
 			return err
 		}
 		var n node
-		n, err = c.toNode(v, "")
+		n, err = c.toNode(v, metadata{})
 		if err != nil {
 			return err
 		}
@@ -127,17 +148,25 @@ func (c *cs) toNodeMap(key string, n node) (map[string]node, error) {
 	return val, nil
 }
 
-func (c *cs) toNode(v any, desc string) (node, error) {
+func (c *cs) toNode(v any, meta metadata) (node, error) {
+
 	typ := reflect.TypeOf(v)
 
 	if typ.Kind() == reflect.Ptr {
 		typ = typ.Elem()
+		meta.optional = true
 		// We assume we can interface this
 		i := reflect.Indirect(reflect.ValueOf(v))
 		if i.IsValid() {
 			v = i.Interface()
 		} else {
-			v = reflect.Zero(reflect.TypeOf(v))
+			return node{
+				meta: metadata{
+					optional:    true,
+					description: meta.description,
+				},
+				nilType: typ,
+			}, nil
 		}
 	}
 
@@ -147,34 +176,34 @@ func (c *cs) toNode(v any, desc string) (node, error) {
 		reflect.Float32, reflect.Float64,
 		reflect.Bool:
 		return node{
-			description: desc,
-			value:       reflect.ValueOf(v),
+			meta:  meta,
+			value: reflect.ValueOf(v),
 		}, nil
 	case reflect.Map:
-		return c.toNodeFromMap(v, desc)
+		return c.toNodeFromMap(v, meta)
 	case reflect.Struct:
-		return c.toNodeFromStruct(v, desc)
+		return c.toNodeFromStruct(v, meta)
 	case reflect.Slice:
-		return c.toNodeFromSlice(v, desc)
+		return c.toNodeFromSlice(v, meta)
 	default:
 		return node{}, fmt.Errorf("unsupported kind %s", typ.Kind().String())
 	}
 }
 
-func (c *cs) toNodeFromMap(v any, desc string) (node, error) {
+func (c *cs) toNodeFromMap(v any, meta metadata) (node, error) {
 	// We assume this is a struct and convert this to a map of values
 	res := map[string]node{}
 	if val, ok := v.(map[string]any); ok {
 		for k, _v := range val {
 			if k == DescriptionKey {
-				if desc == "" {
+				if meta.description == "" {
 					if _desc, _ok := _v.(string); _ok {
-						desc = _desc
+						meta.description = _desc
 					}
 				}
 				continue
 			}
-			fv, err := c.toNode(_v, "")
+			fv, err := c.toNode(_v, metadata{})
 			if err != nil {
 				return node{}, err
 			}
@@ -185,15 +214,33 @@ func (c *cs) toNodeFromMap(v any, desc string) (node, error) {
 	}
 
 	return node{
-		description: desc,
-		value:       reflect.ValueOf(res),
+		meta:  meta,
+		value: reflect.ValueOf(res),
 	}, nil
 }
 
-func (c *cs) toNodeFromStruct(v any, desc string) (node, error) {
+func (c *cs) toNodeFromStruct(v any, meta metadata) (node, error) {
 	// We assume this is a struct and convert this to a map of values
 	res := map[string]node{}
 	val := reflect.ValueOf(v)
+
+	/*
+		useValue := func(f reflect.Value) bool {
+
+			switch {
+			case !f.CanInterface():
+				return false
+			case f.Kind() == reflect.Ptr && f.IsNil():
+				return false
+					case f.Kind() == reflect.Slice && f.Len() == 0:
+						return false
+
+			default:
+				return true
+			}
+		}
+
+	*/
 
 	for i := 0; i < val.NumField(); i++ {
 		f := val.Field(i)
@@ -201,22 +248,32 @@ func (c *cs) toNodeFromStruct(v any, desc string) (node, error) {
 		// TODO - allow this behavior to be configurable by source
 		ft := val.Type().Field(i)
 		if ft.Type == typeEntry {
-			if desc == "" {
-				desc = descriptionFromTag(ft.Tag)
+			if meta.description == "" {
+				meta.description = descriptionFromTag(ft.Tag)
 			}
 			// We skip if this is a nil pointer
-		} else if f.CanInterface() && (f.Kind() != reflect.Ptr || !f.IsNil()) {
-			fv, err := c.toNode(f.Interface(), descriptionFromTag(ft.Tag))
+		} else if f.CanInterface() &&
+			// We can't have a null pointer to a struct or this loops forever
+			!(f.Kind() == reflect.Ptr && f.IsNil() && f.Type().Elem().Kind() == reflect.Struct) { //nolint:staticcheck // won't use DeMorgan's law to allow shortcircuiting
+			key := keyFromTag(ft.Tag)
+			if key == "" {
+				key = toLowerCamel(val.Type().Field(i).Name)
+			}
+			fv, err := c.toNode(f.Interface(),
+				metadata{
+					description: descriptionFromTag(ft.Tag),
+				},
+			)
 			if err != nil {
 				return node{}, err
 			}
-			res[toLowerCamel(val.Type().Field(i).Name)] = fv
+			res[key] = fv
 		}
 	}
 
 	return node{
-		description: desc,
-		value:       reflect.ValueOf(res),
+		meta:  meta,
+		value: reflect.ValueOf(res),
 	}, nil
 }
 
@@ -227,14 +284,21 @@ func descriptionFromTag(tag reflect.StructTag) string {
 	return ""
 }
 
-func (c *cs) toNodeFromSlice(v any, desc string) (node, error) {
+func keyFromTag(tag reflect.StructTag) string {
+	if key, ok := tag.Lookup(KeyTagName); ok {
+		return key
+	}
+	return ""
+}
+
+func (c *cs) toNodeFromSlice(v any, meta metadata) (node, error) {
 	var res []node
 	val := reflect.ValueOf(v)
 	t := reflect.TypeOf(v)
 
 	for i := 0; i < val.Len(); i++ {
 		_v := val.Index(i).Interface()
-		fv, err := c.toNode(_v, "")
+		fv, err := c.toNode(_v, metadata{})
 		if err != nil {
 			return node{}, err
 		}
@@ -252,9 +316,9 @@ func (c *cs) toNodeFromSlice(v any, desc string) (node, error) {
 	}
 
 	return node{
-		description: desc,
-		sliceType:   reflect.SliceOf(ut),
-		value:       reflect.ValueOf(res),
+		meta:      meta,
+		sliceType: reflect.SliceOf(ut),
+		value:     reflect.ValueOf(res),
 	}, nil
 }
 
@@ -397,6 +461,14 @@ func (c *cs) populateMap(fullKey string, dest reflect.Value, n node) error {
 	}
 
 	for key, sourceNode := range sourceMap {
+
+		sv := sourceNode.value
+		// we don't write sourceNodes if they are invalid (nil)
+		if !sv.IsValid() ||
+			((sv.Kind() == reflect.Map || sv.Kind() == reflect.Slice) && sv.IsNil()) {
+			continue
+		}
+
 		destinationKey := toLowerCamel(key)
 		currentFullKey := destinationKey
 		if fullKey != "" {
@@ -425,13 +497,19 @@ func (c *cs) populateMap(fullKey string, dest reflect.Value, n node) error {
 
 // createDestinationValue creates a new destination value based on the source node's type.
 func (c *cs) createDestinationValue(n node) reflect.Value {
-	switch n.value.Type() {
-	case typeMapStringNode:
-		return reflect.MakeMap(typeMapStringAny)
-	case typeArrayNode:
-		return reflect.New(n.sliceType).Elem()
+	switch n.value.Kind() {
+	// We can probably remove this case as it is dead code
+	case reflect.Invalid:
+		return reflect.Zero(reflect.PointerTo(n.nilType))
 	default:
-		return reflect.New(n.value.Type()).Elem()
+		switch n.value.Type() {
+		case typeMapStringNode:
+			return reflect.MakeMap(typeMapStringAny)
+		case typeArrayNode:
+			return reflect.New(n.sliceType).Elem()
+		default:
+			return reflect.New(n.value.Type()).Elem()
+		}
 	}
 }
 
@@ -449,9 +527,13 @@ func (c *cs) populateStruct(fullKey string, dest reflect.Value, n node) error {
 
 		for i := 0; i < dest.NumField(); i++ {
 			f := dest.Field(i)
-			name := toLowerCamel(dest.Type().Field(i).Name)
-			v := valMap[name]
-			err := c.populateDestinationValue(fmt.Sprintf("%s.%s", fullKey, name), f, v)
+			ft := dest.Type().Field(i)
+			key := keyFromTag(ft.Tag)
+			if key == "" {
+				key = toLowerCamel(dest.Type().Field(i).Name)
+			}
+			v := valMap[key]
+			err := c.populateDestinationValue(fmt.Sprintf("%s.%s", fullKey, key), f, v)
 			if err != nil {
 				return err
 			}
@@ -549,6 +631,9 @@ func (c *cs) replaceOrMerge(existing node, in node) (node, error) { //nolint:goc
 			return existing, nil
 		}
 		return node{}, errors.New("destination is unexpectedly not a map[string]node")
+	case reflect.Invalid:
+		// This is the case for a nil value
+		return in, nil
 	default:
 		return node{}, fmt.Errorf("unsupported existing kind %s", existing.value.Kind().String())
 	}
