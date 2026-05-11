@@ -8,3 +8,6 @@ var Config []byte
 
 //go:embed invalid.json
 var Invalid []byte
+
+//go:embed config_env.json
+var ConfigEnv []byte
