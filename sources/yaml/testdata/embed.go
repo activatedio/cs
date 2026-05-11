@@ -8,3 +8,6 @@ var Config []byte
 
 //go:embed invalid.yaml
 var Invalid []byte
+
+//go:embed config_env.yaml
+var ConfigEnv []byte

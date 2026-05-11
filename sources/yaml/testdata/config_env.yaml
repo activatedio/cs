@@ -1,0 +1,8 @@
+a: "${TEST_EXPAND_A}"
+b: "static-${TEST_EXPAND_B}-suffix"
+c:
+  d: "${TEST_EXPAND_A}"
+  e:
+    - "${TEST_EXPAND_B}"
+    - "plain"
+f: "${TEST_EXPAND_MISSING}"
