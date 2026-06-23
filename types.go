@@ -22,6 +22,13 @@ type Config interface {
 	// Sources added later take precedent over sources added earlier
 	AddSource(src Source)
 
+	// AddLockedSource adds a source whose values are locked: once applied, no
+	// other source — and no late-binding (env) source — may override any key
+	// the source provides, nor any descendant of it ("from that point of the
+	// graph down"). Locked values bypass the zero-value skip, so a lock to
+	// false / 0 / "" is honored, and render with a [locked] marker in Dump.
+	AddLockedSource(src Source)
+
 	// AddLateBindingSource adds a source which is consulted at read time, meaning each property present on the
 	// underlying results are looked up again with provided keys
 	AddLateBindingSource(src LateBindingSource)

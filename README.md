@@ -44,3 +44,25 @@ err := cs.Read("prefix.key", val)
 fmt.Println(val)
 
 ```
+
+## Locked sources
+
+`AddLockedSource` registers a source whose values are **locked**: once applied,
+no other source — and no late-binding (env) source — may override any key it
+provides, nor any descendant of it ("from that point of the graph down").
+Locked values bypass the usual zero-value skip, so a lock to `false` / `0` /
+`""` is honored, and they render with a `[locked]` marker in `Dump`. This is the
+building block for shipping hardened, compile-time-pinned configuration.
+
+``` go
+cfg := cs.New()
+
+cfg.AddSource(cs.FromValue("session", &SessionConfig{DisableSecure: true}))
+cfg.AddLateBindingSource(cs.FromEnvironmentVars()) // SESSION_DISABLE_SECURE=true
+
+// Pin the value regardless of file or env.
+cfg.AddLockedSource(cs.FromValue("session.disableSecure", false))
+
+var disableSecure bool
+cfg.MustRead("session.disableSecure", &disableSecure) // always false
+```

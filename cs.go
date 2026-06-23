@@ -22,6 +22,9 @@ var (
 type metadata struct {
 	description string
 	optional    bool
+	// locked indicates the value was supplied by a locked source and may not
+	// be overridden by any later source or by late-binding (env) sources.
+	locked bool
 }
 
 type node struct {
@@ -49,11 +52,15 @@ func (n node) getEffectiveType() reflect.Type {
 
 type cs struct {
 	sources            []Source
+	lockedSources      []Source
 	lateBindingSources []LateBindingSource
 	dirty              bool
 	root               map[string]node
-	lock               sync.RWMutex
-	validatingHook     func(in any) error
+	// lockedKeys holds the normalized, fully-qualified key of every locked
+	// source. A key is locked if it equals, or is a descendant of, any entry.
+	lockedKeys     map[string]struct{}
+	lock           sync.RWMutex
+	validatingHook func(in any) error
 }
 
 func (c *cs) SetValidatingHook(f func(in any) error) {
@@ -81,6 +88,14 @@ func (c *cs) AddSource(src Source) {
 	c.dirty = true
 }
 
+func (c *cs) AddLockedSource(src Source) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	c.lockedSources = append(c.lockedSources, src)
+	c.dirty = true
+}
+
 func (c *cs) AddLateBindingSource(src LateBindingSource) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -95,8 +110,25 @@ func (c *cs) loadData() error {
 	defer c.lock.Unlock()
 
 	c.root = make(map[string]node)
+	c.lockedKeys = make(map[string]struct{})
 
-	for _, src := range c.sources {
+	// Normal sources first (defaults prepended, regular appended), then locked
+	// sources, which always win and cannot be overridden by later sources or
+	// late binding.
+	if err := c.loadSources(c.sources, false); err != nil {
+		return err
+	}
+	if err := c.loadSources(c.lockedSources, true); err != nil {
+		return err
+	}
+
+	c.dirty = false
+
+	return nil
+}
+
+func (c *cs) loadSources(srcs []Source, forceLocked bool) error {
+	for _, src := range srcs {
 		key, v, err := src()
 		if err != nil {
 			return err
@@ -106,21 +138,76 @@ func (c *cs) loadData() error {
 		if err != nil {
 			return err
 		}
+		// Locked sources normalize their key so it merges into — and matches
+		// at read/dump time — the lower-camelled tree the rest of the config
+		// builds (struct fields and map keys are lower-camelled there).
+		if forceLocked {
+			key = normalizeKey(key)
+		}
 		var tmp map[string]node
 		tmp, err = c.toNodeMap(key, n)
 		if err != nil {
 			return err
 		}
 		// We ignore return as maps are never replaced
-		_, err = c.replaceOrMerge(node{value: reflect.ValueOf(c.root)}, node{value: reflect.ValueOf(tmp)})
+		_, err = c.replaceOrMerge(node{value: reflect.ValueOf(c.root)}, node{value: reflect.ValueOf(tmp)}, forceLocked)
 		if err != nil {
 			return err
 		}
+		if forceLocked {
+			// Record the key so every read/dump of this key — or any
+			// descendant — refuses late-binding (env) overrides.
+			c.lockedKeys[key] = struct{}{}
+		}
 	}
-
-	c.dirty = false
-
 	return nil
+}
+
+// normalizeKey lower-camels each dotted segment so a locked key matches the
+// fully-qualified key form built during read/dump (struct field names and map
+// keys are lower-camelled there).
+func normalizeKey(key string) string {
+	parts := strings.Split(key, ".")
+	for i, p := range parts {
+		parts[i] = toLowerCamel(p)
+	}
+	return strings.Join(parts, ".")
+}
+
+// isLocked reports whether fullKey equals, or is a descendant of, any locked
+// key — i.e. locked "from that point of the graph down".
+func (c *cs) isLocked(fullKey string) bool {
+	for lk := range c.lockedKeys {
+		if fullKey == lk ||
+			strings.HasPrefix(fullKey, lk+".") ||
+			strings.HasPrefix(fullKey, lk+"[") {
+			return true
+		}
+	}
+	return false
+}
+
+// stampLocked recursively marks n and all of its descendants as locked, so
+// Dump renders the [locked] marker across a freshly inserted locked subtree.
+func (c *cs) stampLocked(n node) node {
+	n.meta.locked = true
+	switch n.value.Kind() {
+	case reflect.Map:
+		if m, ok := n.value.Interface().(map[string]node); ok {
+			for k, v := range m {
+				m[k] = c.stampLocked(v)
+			}
+		}
+	case reflect.Slice:
+		if s, ok := n.value.Interface().([]node); ok {
+			for i, v := range s {
+				s[i] = c.stampLocked(v)
+			}
+		}
+	default:
+		// Primitive / leaf node — the locked mark above is all that's needed.
+	}
+	return n
 }
 
 func (c *cs) toNodeMap(key string, n node) (map[string]node, error) {
@@ -357,13 +444,17 @@ func (c *cs) populateDestinationValue(fullKey string, dest reflect.Value, n node
 
 // populatePrimitiveValue populates a primitive value (string, int, float, bool) using late binding sources and type conversion.
 func (c *cs) populatePrimitiveValue(fullKey string, dest reflect.Value, n node) error {
-	for _, src := range c.lateBindingSources {
-		lbVal, err := src(fullKey)
-		if err != nil {
-			return err
-		}
-		if lbVal != nil {
-			n = node{value: reflect.ValueOf(lbVal)}
+	// Locked keys ignore late-binding (env) sources — the locked value is
+	// authoritative.
+	if !c.isLocked(fullKey) {
+		for _, src := range c.lateBindingSources {
+			lbVal, err := src(fullKey)
+			if err != nil {
+				return err
+			}
+			if lbVal != nil {
+				n = node{value: reflect.ValueOf(lbVal)}
+			}
 		}
 	}
 
@@ -590,7 +681,10 @@ func (c *cs) populateSlice(fullKey string, dest reflect.Value, n node) error {
 	return nil
 }
 
-func (c *cs) replaceOrMerge(existing node, in node) (node, error) { //nolint:gocyclo // okay for marginally high complexity
+// replaceOrMerge merges in over existing. When forceLocked is true the
+// incoming (locked) value always wins — even a zero value, which an ordinary
+// source would skip — and the result is stamped locked.
+func (c *cs) replaceOrMerge(existing node, in node, forceLocked bool) (node, error) { //nolint:gocyclo // okay for marginally high complexity
 
 	switch existing.value.Kind() {
 	case reflect.String, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
@@ -600,9 +694,13 @@ func (c *cs) replaceOrMerge(existing node, in node) (node, error) { //nolint:goc
 		if in.value.Kind() == reflect.Map {
 			return node{}, fmt.Errorf("cannot overrwrite type %s with a map", existing.value.Kind().String())
 		}
-		// Do nothing if the incoming value is not valid
-		if in.value.IsZero() {
+		// Do nothing if the incoming value is not valid — unless locked, where
+		// a zero value (false / 0 / "") is an intentional, authoritative lock.
+		if in.value.IsZero() && !forceLocked {
 			return existing, nil
+		}
+		if forceLocked {
+			in.meta.locked = true
 		}
 		return in, nil
 	// Right now we simply replace the slices
@@ -611,8 +709,11 @@ func (c *cs) replaceOrMerge(existing node, in node) (node, error) { //nolint:goc
 			return node{}, fmt.Errorf("invalid value for slice target %s", in.value.Kind().String())
 		}
 		// Do nothing if the incoming value is not valid
-		if in.value.IsZero() {
+		if in.value.IsZero() && !forceLocked {
 			return existing, nil
+		}
+		if forceLocked {
+			in = c.stampLocked(in)
 		}
 		return in, nil
 	case reflect.Map:
@@ -626,10 +727,13 @@ func (c *cs) replaceOrMerge(existing node, in node) (node, error) { //nolint:goc
 					if el, elOk := eMap[k]; elOk {
 						// map contains value, we merge
 						var err error
-						v, err = c.replaceOrMerge(el, v)
+						v, err = c.replaceOrMerge(el, v, forceLocked)
 						if err != nil {
 							return node{}, err
 						}
+					} else if forceLocked {
+						// Brand-new locked subtree — stamp it wholesale.
+						v = c.stampLocked(v)
 					}
 					eMap[k] = v
 				}
@@ -641,6 +745,9 @@ func (c *cs) replaceOrMerge(existing node, in node) (node, error) { //nolint:goc
 		return node{}, errors.New("destination is unexpectedly not a map[string]node")
 	case reflect.Invalid:
 		// This is the case for a nil value
+		if forceLocked {
+			in = c.stampLocked(in)
+		}
 		return in, nil
 	default:
 		return node{}, fmt.Errorf("unsupported existing kind %s", existing.value.Kind().String())
@@ -751,7 +858,8 @@ func (c *cs) MustGetDescriptions(key string) map[string]any {
 
 func newConfig() Config {
 	return &cs{
-		root: map[string]node{},
+		root:       map[string]node{},
+		lockedKeys: map[string]struct{}{},
 		validatingHook: func(in any) error {
 			if v, ok := in.(Validating); ok {
 				return v.Validate()

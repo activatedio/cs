@@ -34,6 +34,13 @@ func AddSource(src Source) {
 	Global().AddSource(src)
 }
 
+// AddLockedSource adds a locked source to the global configuration instance.
+// Locked values cannot be overridden by any other source or by late-binding
+// (env) sources, and apply from that key down through all descendants.
+func AddLockedSource(src Source) {
+	Global().AddLockedSource(src)
+}
+
 // AddLateBindingSource adds a source which is consulted at read time, meaning each property present on the
 // underlying results are looked up again with provided keys
 func AddLateBindingSource(src LateBindingSource) {

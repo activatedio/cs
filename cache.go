@@ -33,6 +33,10 @@ func (c *cachedConfig) AddSource(src Source) {
 	c.delegate.AddSource(src)
 }
 
+func (c *cachedConfig) AddLockedSource(src Source) {
+	c.delegate.AddLockedSource(src)
+}
+
 func (c *cachedConfig) AddLateBindingSource(src LateBindingSource) {
 	c.delegate.AddLateBindingSource(src)
 }

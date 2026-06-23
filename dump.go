@@ -124,13 +124,17 @@ func (c *cs) overlayLateBinding(fullKey string, val node) (node, error) {
 		}, nil
 	default:
 		var lbRes any
-		for _, lbs := range c.lateBindingSources {
-			lbVal, err := lbs(fullKey)
-			if err != nil {
-				return node{}, err
-			}
-			if lbVal != nil {
-				lbRes = lbVal
+		// Locked keys ignore late-binding (env) sources in the dump, just as
+		// they do at read time, so the dump shows the locked value.
+		if !c.isLocked(fullKey) {
+			for _, lbs := range c.lateBindingSources {
+				lbVal, err := lbs(fullKey)
+				if err != nil {
+					return node{}, err
+				}
+				if lbVal != nil {
+					lbRes = lbVal
+				}
 			}
 		}
 		if lbRes != nil {
@@ -190,6 +194,9 @@ func (c *cs) writeHeaderLine(name string, val node, ctx *dumpContext) error {
 	if val.meta.optional {
 		sb.WriteString(" [optional]")
 	}
+	if val.meta.locked {
+		sb.WriteString(" [locked]")
+	}
 	sb.WriteString("\n")
 	_, err := ctx.opts.out.Write([]byte(sb.String()))
 	return err
@@ -206,6 +213,9 @@ func (c *cs) writeLine(name string, val node, ctx *dumpContext) error {
 	}
 	if val.meta.optional {
 		sb.WriteString(" [optional]")
+	}
+	if val.meta.locked {
+		sb.WriteString(" [locked]")
 	}
 
 	outVal := val.interfaceOrNil()
