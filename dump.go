@@ -99,7 +99,14 @@ func (c *cs) Dump(opts ...DumpOption) error {
 
 }
 
-func (c *cs) overlayLateBinding(fullKey string, val node) (node, error) {
+func (c *cs) overlayLateBinding(fullKey string, val node) (node, error) { //nolint:gocyclo // okay for marginally high complexity
+
+	// Derive the [locked] marker from the same isLocked() the read path uses,
+	// so the Dump marker covers exactly what enforcement covers — every node
+	// at or below a locked key, including siblings of a partial lock and the
+	// container header — and never disagrees with it.
+	locked := c.isLocked(fullKey)
+	val.meta.locked = locked
 
 	switch val.getEffectiveType().Kind() {
 	case reflect.Map:
@@ -126,7 +133,7 @@ func (c *cs) overlayLateBinding(fullKey string, val node) (node, error) {
 		var lbRes any
 		// Locked keys ignore late-binding (env) sources in the dump, just as
 		// they do at read time, so the dump shows the locked value.
-		if !c.isLocked(fullKey) {
+		if !locked {
 			for _, lbs := range c.lateBindingSources {
 				lbVal, err := lbs(fullKey)
 				if err != nil {

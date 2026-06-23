@@ -23,6 +23,7 @@ func (c *cachedConfig) Dump(opts ...DumpOption) error {
 
 func (c *cachedConfig) AddDefaultSource(src Source) {
 	c.delegate.AddDefaultSource(src)
+	c.invalidate()
 }
 
 func (c *cachedConfig) SetValidatingHook(f func(in any) error) {
@@ -31,14 +32,28 @@ func (c *cachedConfig) SetValidatingHook(f func(in any) error) {
 
 func (c *cachedConfig) AddSource(src Source) {
 	c.delegate.AddSource(src)
+	c.invalidate()
 }
 
 func (c *cachedConfig) AddLockedSource(src Source) {
 	c.delegate.AddLockedSource(src)
+	c.invalidate()
 }
 
 func (c *cachedConfig) AddLateBindingSource(src LateBindingSource) {
 	c.delegate.AddLateBindingSource(src)
+	c.invalidate()
+}
+
+// invalidate clears the read caches after a source changes, so a value read
+// before the source was added is recomputed on the next read rather than
+// served stale. Without this, a locked source added after a prior read of the
+// same key would silently no-op.
+func (c *cachedConfig) invalidate() {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	c.cache = map[cacheKey]reflect.Value{}
+	c.descriptionsCache = map[string]map[string]any{}
 }
 
 func (c *cachedConfig) Read(key string, into any) error {

@@ -22,8 +22,9 @@ var (
 type metadata struct {
 	description string
 	optional    bool
-	// locked indicates the value was supplied by a locked source and may not
-	// be overridden by any later source or by late-binding (env) sources.
+	// locked drives the Dump [locked] marker. It is transient display state set
+	// during the dump overlay from isLocked() — the authoritative locked-ness
+	// lives in c.lockedKeys, not here.
 	locked bool
 }
 
@@ -142,6 +143,14 @@ func (c *cs) loadSources(srcs []Source, forceLocked bool) error {
 		// at read/dump time — the lower-camelled tree the rest of the config
 		// builds (struct fields and map keys are lower-camelled there).
 		if forceLocked {
+			// A slice-index key (e.g. "servers[0].host") cannot be merged into
+			// the tree (toNodeMap treats it as a plain map key, never descending
+			// into the slice) and would silently fail to lock. Reject it so the
+			// caller locks the parent key instead — a slice value locked at its
+			// parent is replaced wholesale and isLocked covers every element.
+			if strings.ContainsRune(key, '[') {
+				return fmt.Errorf("locked source key %q targets a slice index, which is not supported; lock the parent key instead", key)
+			}
 			key = normalizeKey(key)
 		}
 		var tmp map[string]node
@@ -175,39 +184,20 @@ func normalizeKey(key string) string {
 }
 
 // isLocked reports whether fullKey equals, or is a descendant of, any locked
-// key — i.e. locked "from that point of the graph down".
+// key — i.e. locked "from that point of the graph down". The empty locked key
+// is the root and locks everything. This is the single source of truth for
+// locked-ness: both the read-time env-suppression and the Dump [locked] marker
+// derive from it, so display and enforcement can never disagree.
 func (c *cs) isLocked(fullKey string) bool {
 	for lk := range c.lockedKeys {
-		if fullKey == lk ||
+		if lk == "" ||
+			fullKey == lk ||
 			strings.HasPrefix(fullKey, lk+".") ||
 			strings.HasPrefix(fullKey, lk+"[") {
 			return true
 		}
 	}
 	return false
-}
-
-// stampLocked recursively marks n and all of its descendants as locked, so
-// Dump renders the [locked] marker across a freshly inserted locked subtree.
-func (c *cs) stampLocked(n node) node {
-	n.meta.locked = true
-	switch n.value.Kind() {
-	case reflect.Map:
-		if m, ok := n.value.Interface().(map[string]node); ok {
-			for k, v := range m {
-				m[k] = c.stampLocked(v)
-			}
-		}
-	case reflect.Slice:
-		if s, ok := n.value.Interface().([]node); ok {
-			for i, v := range s {
-				s[i] = c.stampLocked(v)
-			}
-		}
-	default:
-		// Primitive / leaf node — the locked mark above is all that's needed.
-	}
-	return n
 }
 
 func (c *cs) toNodeMap(key string, n node) (map[string]node, error) {
@@ -683,7 +673,8 @@ func (c *cs) populateSlice(fullKey string, dest reflect.Value, n node) error {
 
 // replaceOrMerge merges in over existing. When forceLocked is true the
 // incoming (locked) value always wins — even a zero value, which an ordinary
-// source would skip — and the result is stamped locked.
+// source would skip. Locked-ness itself is tracked in c.lockedKeys (and the
+// Dump marker derives from isLocked), not stamped onto nodes here.
 func (c *cs) replaceOrMerge(existing node, in node, forceLocked bool) (node, error) { //nolint:gocyclo // okay for marginally high complexity
 
 	switch existing.value.Kind() {
@@ -700,7 +691,10 @@ func (c *cs) replaceOrMerge(existing node, in node, forceLocked bool) (node, err
 			return existing, nil
 		}
 		if forceLocked {
-			in.meta.locked = true
+			// Carry the existing node's human-facing metadata (description,
+			// optional) onto the locked value so the Dump audit line keeps its
+			// doc string — a locked source (e.g. FromValue) carries none.
+			in.meta = existing.meta
 		}
 		return in, nil
 	// Right now we simply replace the slices
@@ -711,9 +705,6 @@ func (c *cs) replaceOrMerge(existing node, in node, forceLocked bool) (node, err
 		// Do nothing if the incoming value is not valid
 		if in.value.IsZero() && !forceLocked {
 			return existing, nil
-		}
-		if forceLocked {
-			in = c.stampLocked(in)
 		}
 		return in, nil
 	case reflect.Map:
@@ -731,9 +722,6 @@ func (c *cs) replaceOrMerge(existing node, in node, forceLocked bool) (node, err
 						if err != nil {
 							return node{}, err
 						}
-					} else if forceLocked {
-						// Brand-new locked subtree — stamp it wholesale.
-						v = c.stampLocked(v)
 					}
 					eMap[k] = v
 				}
@@ -745,9 +733,6 @@ func (c *cs) replaceOrMerge(existing node, in node, forceLocked bool) (node, err
 		return node{}, errors.New("destination is unexpectedly not a map[string]node")
 	case reflect.Invalid:
 		// This is the case for a nil value
-		if forceLocked {
-			in = c.stampLocked(in)
-		}
 		return in, nil
 	default:
 		return node{}, fmt.Errorf("unsupported existing kind %s", existing.value.Kind().String())
