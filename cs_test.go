@@ -301,6 +301,53 @@ func TestConfig_WriteRead(t *testing.T) {
 
 			},
 		},
+		// kit#272: map[string]string (and any typed string-keyed map) destinations
+		// panicked with "invalid destination map type. must be map[string]any".
+		// The destination struct arrives with a NIL map field — both the typed
+		// support and the nil-map initialization are under test here.
+		"typed string-keyed maps": {
+			arrange: func(c cs.Config) {
+				c.AddSource(func() (string, any, error) {
+					return "theme", map[string]any{
+						"services": map[string]string{
+							"center":      "http://localhost:9003",
+							"Spaced Name": "http://localhost:9004",
+						},
+					}, nil
+				})
+				c.AddSource(func() (string, any, error) {
+					return "counts", map[string]int{"a": 1, "b": 2}, nil
+				})
+			},
+			assert: func(c cs.Config) {
+				type themeLike struct {
+					Services map[string]string
+				}
+				got := &themeLike{}
+				c.MustRead("theme", got)
+				a.Equal(map[string]string{
+					"center":      "http://localhost:9003",
+					"Spaced Name": "http://localhost:9004",
+				}, got.Services)
+
+				// Direct map reads, typed and pre-made.
+				got2 := map[string]string{"center": "overwritten-below"}
+				c.MustRead("theme.services", &got2)
+				a.Equal("http://localhost:9003", got2["center"])
+
+				got3 := map[string]int{}
+				c.MustRead("counts", &got3)
+				a.Equal(map[string]int{"a": 1, "b": 2}, got3)
+
+				// The historical map[string]any path is untouched.
+				got4 := map[string]any{}
+				c.MustRead("theme", &got4)
+				a.Equal(map[string]any{"services": map[string]any{
+					"center":      "http://localhost:9003",
+					"Spaced Name": "http://localhost:9004",
+				}}, got4)
+			},
+		},
 		"default source with override - simple structs": {
 			arrange: func(c cs.Config) {
 				c.AddSource(func() (string, any, error) {

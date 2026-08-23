@@ -268,26 +268,31 @@ func (c *cs) toNode(v any, meta metadata) (node, error) {
 }
 
 func (c *cs) toNodeFromMap(v any, meta metadata) (node, error) {
-	// We assume this is a struct and convert this to a map of values
+	// Any string-keyed map is accepted (map[string]any, map[string]string,
+	// map[string]SomeStruct, ...) — the value side goes back through toNode
+	// regardless, so only the key type matters here.
 	res := map[string]node{}
-	if val, ok := v.(map[string]any); ok {
-		for k, _v := range val {
-			if k == DescriptionKey {
-				if meta.description == "" {
-					if _desc, _ok := _v.(string); _ok {
-						meta.description = _desc
-					}
+	rv := reflect.ValueOf(v)
+	if rv.Kind() != reflect.Map || rv.Type().Key().Kind() != reflect.String {
+		return node{}, errors.New("map must have string keys")
+	}
+	iter := rv.MapRange()
+	for iter.Next() {
+		k := iter.Key().String()
+		_v := iter.Value().Interface()
+		if k == DescriptionKey {
+			if meta.description == "" {
+				if _desc, _ok := _v.(string); _ok {
+					meta.description = _desc
 				}
-				continue
 			}
-			fv, err := c.toNode(_v, metadata{})
-			if err != nil {
-				return node{}, err
-			}
-			res[k] = fv
+			continue
 		}
-	} else {
-		return node{}, errors.New("map must be of type map[string]any")
+		fv, err := c.toNode(_v, metadata{})
+		if err != nil {
+			return node{}, err
+		}
+		res[k] = fv
 	}
 
 	return node{
@@ -535,9 +540,20 @@ func (c *cs) populateMap(fullKey string, dest reflect.Value, n node) error { //n
 	if !ok {
 		return errors.New("invalid source map type. must be map[string]node")
 	}
-	if _, ok := dest.Interface().(map[string]any); !ok {
-		return errors.New("invalid destination map type. must be map[string]any")
+	destType := dest.Type()
+	if destType.Key().Kind() != reflect.String {
+		return fmt.Errorf("invalid destination map type %s. keys must be strings", destType.String())
 	}
+	// A nil destination map cannot take SetMapIndex; a struct field arrives nil
+	// unless the caller pre-made it (map[string]string config fields do not).
+	if dest.IsNil() {
+		if !dest.CanSet() {
+			return fmt.Errorf("invalid destination map: nil and not settable (%s)", destType.String())
+		}
+		dest.Set(reflect.MakeMap(destType))
+	}
+	elemType := destType.Elem()
+	anyElem := elemType.Kind() == reflect.Interface && elemType.NumMethod() == 0
 
 	isSkippableValue := func(v reflect.Value) bool {
 		if !v.IsValid() {
@@ -567,14 +583,32 @@ func (c *cs) populateMap(fullKey string, dest reflect.Value, n node) error { //n
 		destMapKey := reflect.ValueOf(srcKey) // keep original key for lookup/set
 
 		existing := dest.MapIndex(destMapKey)
-		if existing.IsValid() {
-			if err := c.populateDestinationValue(pathKey, existing, childNode); err != nil {
+
+		if anyElem {
+			// The historical map[string]any path, byte-for-byte.
+			if existing.IsValid() {
+				if err := c.populateDestinationValue(pathKey, existing, childNode); err != nil {
+					return err
+				}
+				continue
+			}
+
+			newValue := c.createDestinationValue(childNode)
+			if err := c.populateDestinationValue(pathKey, newValue, childNode); err != nil {
 				return err
 			}
+			dest.SetMapIndex(destMapKey, newValue)
 			continue
 		}
 
-		newValue := c.createDestinationValue(childNode)
+		// Typed element (map[string]string, map[string]SomeStruct, ...): map
+		// entries are not addressable, so populate an addressable value of the
+		// element type — seeded from the existing entry so merges keep their
+		// semantics — and store it back.
+		newValue := reflect.New(elemType).Elem()
+		if existing.IsValid() {
+			newValue.Set(existing)
+		}
 		if err := c.populateDestinationValue(pathKey, newValue, childNode); err != nil {
 			return err
 		}
