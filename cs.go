@@ -30,6 +30,12 @@ type metadata struct {
 
 type node struct {
 	meta metadata
+	// implicit marks a zero bool read from a plain (non-pointer) struct
+	// field. A struct source states every field whether it means to or not,
+	// so its false is "unset" and must not override a lower source; a bool
+	// from a map-shaped source (a yaml/json file, a scalar FromValue) is
+	// stated on purpose, and its false wins like any other value.
+	implicit bool
 	// for arrays which need a type
 	sliceType reflect.Type
 	nilType   reflect.Type
@@ -349,6 +355,7 @@ func (c *cs) toNodeFromStruct(v any, meta metadata) (node, error) {
 			if err != nil {
 				return node{}, err
 			}
+			fv.implicit = isZeroBoolField(f)
 			res[key] = fv
 		}
 	}
@@ -357,6 +364,12 @@ func (c *cs) toNodeFromStruct(v any, meta metadata) (node, error) {
 		meta:  meta,
 		value: reflect.ValueOf(res),
 	}, nil
+}
+
+// isZeroBoolField reports a plain bool struct field holding false — a value
+// the struct states whether it means to or not (see node.implicit).
+func isZeroBoolField(f reflect.Value) bool {
+	return f.Kind() == reflect.Bool && !f.Bool()
 }
 
 func descriptionFromTag(tag reflect.StructTag) string {
@@ -719,9 +732,18 @@ func (c *cs) replaceOrMerge(existing node, in node, forceLocked bool) (node, err
 		if in.value.Kind() == reflect.Map {
 			return node{}, fmt.Errorf("cannot overrwrite type %s with a map", existing.value.Kind().String())
 		}
-		// Do nothing if the incoming value is not valid — unless locked, where
-		// a zero value (false / 0 / "") is an intentional, authoritative lock.
-		if in.value.IsZero() && !forceLocked {
+		// A nil pointer field of a struct source carries no value at all: it
+		// is unset, never a reason to drop the existing one.
+		if !in.value.IsValid() {
+			return existing, nil
+		}
+		// Do nothing if the incoming value is zero — unless locked, where a
+		// zero value (false / 0 / "") is an intentional, authoritative lock,
+		// or it is an explicit bool false, without which a default true could
+		// never be turned off. Zero strings and numbers still read as unset:
+		// a rendered file states them for keys it has no value for.
+		explicitFalse := in.value.Kind() == reflect.Bool && !in.implicit
+		if in.value.IsZero() && !forceLocked && !explicitFalse {
 			return existing, nil
 		}
 		if forceLocked {

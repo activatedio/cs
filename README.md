@@ -45,6 +45,28 @@ fmt.Println(val)
 
 ```
 
+## Zero values
+
+A later source does not override an earlier one with a zero value: `0` and
+`""` read as "unset", because a struct source states every field and a
+rendered file states keys it has no value for. Bools are the exception that
+keeps a default `true` reachable:
+
+- an explicit `false` from a map-shaped source — a YAML/JSON file, or a scalar
+  `FromValue("prefix.key", false)` — overrides, like any other value;
+- a plain `bool` field of a struct source holding `false` is unset, so
+  `FromValue("prefix", &Config{})` never clobbers a lower default (use a
+  `*bool` field to state a `false` from a struct).
+
+``` go
+cfg := cs.New()
+cfg.AddDefaultSource(cs.FromValue("static", &StaticConfig{IncludeDefaults: true}))
+cfg.AddSource(cs.FromYAMLFile("cs.yaml")) // static: {includeDefaults: false}
+
+var include bool
+cfg.MustRead("static.includeDefaults", &include) // false
+```
+
 ## Locked sources
 
 `AddLockedSource` registers a source whose values are **locked**: once applied,
